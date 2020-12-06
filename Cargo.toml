@@ -1,0 +1,9 @@
+[package]
+name = "rescan"
+version = "0.1.0"
+authors = ["Nathan Wiebe Neufeldt <wn.nathan@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+regex = "1"
+rescan-format = { path = "rescan-format" }
