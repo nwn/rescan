@@ -3,8 +3,8 @@ mod tests {
     #[test]
     fn parse_format() {
         use super::*;
-        let parser = Parser::new("{test} this is a {test\\{string that should{2,4}} work }} just {{ fine");
-        assert_eq!(parser.parse(), Ok(FormatSpec { segments: vec![
+        let parsed = parse("{test} this is a {test\\{string that should{2,4}} work }} just {{ fine");
+        assert_eq!(parsed, Ok(FormatSpec { segments: vec![
             Segment::Capture(String::from("test")),
             Segment::Literal(String::from(" this is a ")),
             Segment::Capture(String::from("test\\{string that should{2,4}")),
@@ -14,7 +14,8 @@ mod tests {
 }
 
 use proc_macro::TokenStream;
-use quote::quote;
+use proc_macro2::TokenStream as TokenStream2;
+use quote::{quote, ToTokens};
 
 #[proc_macro]
 pub fn format(input: TokenStream) -> TokenStream {
@@ -23,12 +24,34 @@ pub fn format(input: TokenStream) -> TokenStream {
 
     let format = parse(&format_str).unwrap();
 
-    quote!().into()
+    quote!(#format).into()
 }
 
 #[derive(Debug, PartialEq, Eq)]
 struct FormatSpec {
     segments: Vec<Segment>,
+}
+
+impl ToTokens for FormatSpec {
+    fn to_tokens(&self, tokens: &mut TokenStream2) {
+        let new_tokens = self.to_token_stream();
+        *tokens = quote!(#tokens#new_tokens);
+    }
+    fn to_token_stream(&self) -> TokenStream2 {
+        let mut segments = quote!();
+        for segment in &self.segments {
+            let segment = match segment {
+                Segment::Literal(str) => quote!(Segment::Literal(#str),),
+                Segment::Capture(str) => quote!(Segment::Capture(#str),),
+            };
+            segments = quote!(#segments #segment);
+        }
+        quote! {
+            FormatSpec::new(::std::vec![
+                #segments
+            ])
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -66,7 +89,7 @@ impl<'s> Parser<'s> {
             match ch as char {
                 '{' | '}' if source.get(self.pos + 1) == Some(&ch) => self.pos += 1,
                 '{' => break,
-                '}' => return Err(String::from("Unmatched '}}' in format string")),
+                '}' => return Err("Unmatched '}' in format string".into()),
                 _ => (),
             }
             result.push(ch as char);
@@ -103,6 +126,9 @@ impl<'s> Parser<'s> {
             } else {
                 break;
             }
+        }
+        if brace_level != -1 {
+            return Err("Unmatched '{' in format string".into());
         }
         self.output.push(Segment::Capture(result));
         Ok(())
