@@ -23,6 +23,8 @@ mod parse;
 pub fn parse_to_abstract(input: TokenStream) -> TokenStream {
     let abs = syn::parse_macro_input!(input as parse::Abstract);
     println!("{:#?}", abs);
+    let abs2 = parse::Abstract2::from(abs);
+    println!("{:#?}", abs2);
 
     quote!().into()
 }

@@ -129,5 +129,5 @@ fn test_abstract_parsing() {
     rescan_format::parse_to_abstract!("{}", u64);
     rescan_format::parse_to_abstract!("{0:name}", name = u16);
     rescan_format::parse_to_abstract!("{:id}", id = "[0-9]" as u32);
-    rescan_format::parse_to_abstract!("A:{} B:{2:2} C:{1} D:{3:0} E:{:name} F:{5:id}", u32, "-?\\d+" as i8, u64, name = u16, id = "[0-9]" as u32);
+    rescan_format::parse_to_abstract!("A:{} B:{4:2} C:{2} D:{3:0} E:{:name} F:{5:id}", u32, "-?\\d+" as i8, u64, name = u16, id = "[0-9]" as u32);
 }

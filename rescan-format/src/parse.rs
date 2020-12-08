@@ -2,6 +2,145 @@ use syn;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 
 #[derive(Debug)]
+pub struct Abstract2 {
+    pub segments: Vec<Segment<(Option<usize>, usize)>>,
+    pub rules: Vec<Rule>,
+}
+impl From<Abstract> for Abstract2 {
+    fn from(Abstract { segments, positional_rules, named_rules }: Abstract) -> Self {
+        let mut pos_idx = 0;
+        let mut rule_idx = 0;
+        let segments: Vec<_> = segments.into_iter().map(|seg| match seg {
+            Segment::Literal(lit) => Segment::Literal(lit),
+            Segment::Capture(cap) => {
+                let pos = match cap.pos {
+                    CapturePos::Null => None,
+                    CapturePos::Explicit(pos) => Some(pos),
+                    CapturePos::Implicit => {
+                        pos_idx += 1;
+                        Some(pos_idx - 1)
+                    }
+                };
+                let rule = match cap.rule {
+                    CaptureRule::Implicit => {
+                        rule_idx += 1;
+                        rule_idx - 1
+                    }
+                    CaptureRule::Positional(rule) => {
+                        // Ensure that positional references are within range.
+                        let num_positions = positional_rules.len();
+                        if rule >= num_positions {
+                            panic!("Invalid reference to positional argument {} (there are only {})", rule, num_positions);
+                        }
+                        rule
+                    }
+                    CaptureRule::Named(name) => {
+                        let idx = named_rules.iter().position(|(rule_name, _)| rule_name == &name);
+                        if let Some(idx) = idx {
+                            positional_rules.len() + idx
+                        } else {
+                            // Ensure that the referenced named argument exists.
+                            panic!("Argument named \"{}\" does not exist");
+                        }
+                    }
+                };
+                Segment::Capture((pos, rule))
+            }
+        }).collect();
+
+        // Ensure that outputs cover the range 0..n, where n is the number of outputs.
+        let num_outputs = segments
+            .iter()
+            .filter_map(|seg| seg.capture())
+            .count();
+        let mut outputs: Vec<_> = segments
+            .iter()
+            .filter_map(|seg| seg.capture())
+            .filter_map(|(pos, _rule)| *pos)
+            .collect();
+        outputs.sort_unstable();
+        outputs.dedup();
+        for (expected, actual) in outputs.into_iter().enumerate() {
+            if expected != actual {
+                panic!("Missing capture index: {}", expected);
+            }
+        }
+
+        // Ensure that all named rules are unique.
+        let mut names: Vec<_> = named_rules
+            .iter()
+            .map(|(name, _)| name)
+            .collect();
+        names.sort();
+        for window in names.windows(2) {
+            if window[0] == window[1] {
+                panic!("Argument name {} occurs multiple times", window[1]);
+            }
+        }
+
+        let mut rules = positional_rules;
+        for (_name, rule) in named_rules {
+            rules.push(rule);
+        }
+
+        // Ensure that all rules are referenced.
+        let mut rule_refs: Vec<_> = segments
+            .iter()
+            .filter_map(|seg| if let Segment::Capture(cap) = seg { Some(cap.1) } else { None })
+            .collect();
+        rule_refs.sort_unstable();
+        rule_refs.dedup();
+        match mismatch(rule_refs.into_iter(), 0..rules.len()) {
+            Mismatch::None => (),
+            Mismatch::LeftOnly(_) => unreachable!("Rule references have already been checked"),
+            Mismatch::RightOnly(idx) |
+            Mismatch::Unequal(_, idx) => panic!("Unused argument: {}", idx),
+        }
+
+        // Ensure that null rules are only referenced by null captures.
+        for (pos, rule) in segments.iter().filter_map(|seg| seg.capture()) {
+            if pos.is_some() {
+                let rule = &rules[*rule];
+                if let Rule::Null { .. } = rule {
+                    panic!("Untyped arguments cannot be used in captures");
+                }
+            }
+        }
+
+        Self {
+            segments,
+            rules,
+        }
+    }
+}
+
+enum Mismatch<T, U> {
+    None,
+    LeftOnly(T),
+    RightOnly(U),
+    Unequal(T, U),
+}
+fn mismatch<T, U>(mut lhs: impl Iterator<Item = T>, mut rhs: impl Iterator<Item = U>) -> Mismatch<T, U>
+where T: PartialEq<U> {
+    loop {
+        let left = lhs.next();
+        let right = rhs.next();
+        break match (left, right) {
+            (Some(left), Some(right)) => {
+                if left == right {
+                    continue;
+                } else {
+                    Mismatch::Unequal(left, right)
+                }
+            }
+            (Some(left), None) => Mismatch::LeftOnly(left),
+            (None, Some(right)) => Mismatch::RightOnly(right),
+            (None, None) => Mismatch::None,
+        };
+    }
+}
+
+#[derive(Debug)]
 pub struct Abstract {
     pub segments: Vec<Segment>,
     positional_rules: Vec<Rule>,
@@ -9,9 +148,18 @@ pub struct Abstract {
 }
 
 #[derive(Debug)]
-pub enum Segment {
+pub enum Segment<Cap = Capture> {
     Literal(String),
-    Capture(Capture),
+    Capture(Cap),
+}
+impl<Cap> Segment<Cap> {
+    fn capture(&self) -> Option<&Cap> {
+        if let Segment::Capture(cap) = self {
+            Some(cap)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -24,13 +172,13 @@ struct Capture {
 enum CapturePos {
     Null,
     Implicit,
-    Explicit(u32),
+    Explicit(usize),
 }
 
 #[derive(Debug)]
 enum CaptureRule {
     Implicit,
-    Positional(u32),
+    Positional(usize),
     Named(String),
 }
 
@@ -41,7 +189,7 @@ struct Arg {
 }
 
 #[derive(Debug)]
-enum Rule {
+pub enum Rule {
     Null {
         regex: Box<syn::Expr>,
     },
