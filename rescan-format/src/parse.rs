@@ -1,4 +1,4 @@
-use syn::{self, parse::Parser as _};
+use syn;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 
 #[derive(Debug)]
@@ -34,20 +34,13 @@ enum CaptureRule {
     Named(String),
 }
 
+#[derive(Debug)]
 struct Arg {
     name: Option<syn::Ident>,
     rule: Rule,
 }
-impl std::fmt::Debug for Arg {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        if let Some(name) = &self.name {
-            write!(f, "{} = {:?}", name.to_string(), self.rule)
-        } else {
-            write!(f, "{:?}", self.rule)
-        }
-    }
-}
 
+#[derive(Debug)]
 enum Rule {
     Null {
         regex: Box<syn::Expr>,
@@ -60,15 +53,6 @@ enum Rule {
         typ: Box<syn::Type>,
     },
 }
-impl std::fmt::Debug for Rule {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::Null {regex } => write!(f, "(regex: {:?})", regex),
-            Self::Default { typ } => write!(f, "(type: {:?})", typ),
-            Self::Custom { regex, typ } => write!(f, "(regex: {:?}, type: {:?})", regex, typ),
-        }
-    }
-}
 
 impl syn::parse::Parse for Abstract {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
@@ -78,12 +62,15 @@ impl syn::parse::Parse for Abstract {
         let mut positional_rules = vec![];
         let mut named_rules = vec![];
         if !input.is_empty() {
-            let comma: syn::Token![,] = input.parse()?;
+            let _comma: syn::Token![,] = input.parse()?;
             let args = syn::punctuated::Punctuated::<Arg, syn::Token![,]>::parse_terminated(input)?;
             for Arg { name, rule } in args {
                 if let Some(name) = name {
                     named_rules.push((name.to_string(), rule));
                 } else {
+                    if !named_rules.is_empty() {
+                        panic!("Positional arguments must be before named arguments")
+                    }
                     positional_rules.push(rule);
                 }
             }
@@ -97,12 +84,12 @@ impl syn::parse::Parse for Abstract {
 }
 
 impl syn::parse::Parse for Arg {
-    fn parse(mut input: syn::parse::ParseStream) -> syn::Result<Self> {
-        use syn::{Expr, Ident, Token, Type};
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        use syn::{ExprCast, Ident, Token, Type};
 
         // First test if there is a leading `ident =`, which uniquely identifies
         // a named argument.
-        let name = if input.peek(Ident) && input.peek(Token![=]) {
+        let name = if input.peek(Ident) && input.peek2(Token![=]) {
             let name: Ident = input.parse()?;
             let _eq: Token![=] = input.parse()?;
             Some(name)
@@ -110,40 +97,43 @@ impl syn::parse::Parse for Arg {
             None
         };
 
-        // Try to parse from here as a type. If successful, and there isn't an
-        // `as` token following it, return a type-only argument. Otherwise,
-        // backtrack and try something else.
+        // Try to parse from here as a type. If successful, with a follow set
+        // of only ",", return a type-only argument. Otherwise, backtrack and
+        // try something else.
         let try_type = input.fork();
-        if let Ok(typ) = try_type.parse::<Type>() {
-            if !try_type.peek(Token![as]) {
-                return Ok(Self {
-                    name,
-                    rule: Rule::Default {
-                        typ: Box::new(typ)
-                    },
-                });
-            }
-        }
-
-        // At this point, we assume there must be a regex expression.
-        let regex: syn::Expr = input.parse()?;
-        if !input.peek(Token![as]) {
+        if try_type.parse::<Type>().is_ok() && (try_type.is_empty() || try_type.peek(Token![,])) {
+            let typ = Box::new(input.parse()?);
             return Ok(Self {
                 name,
-                rule: Rule::Null {
-                    regex: Box::new(regex),
-                },
+                rule: Rule::Default { typ },
             });
         }
 
-        let _as: Token![as] = input.parse()?;
-        let typ: Type = input.parse()?;
+        // At this point, we assume there must be a regex expression.
+        let ExprCast {
+            attrs,
+            expr: regex,
+            as_token: _,
+            ty: typ,
+        } = input.parse()?;
+        if !attrs.is_empty() {
+            // TODO: Throw error
+        }
+
+        // Check for the null type (written `_`) that can only be used with null
+        // captures (those which don't actually extract a value).
+        let rule = if let Type::Infer(_) = *typ {
+            Rule::Null { regex }
+        } else {
+            Rule::Custom {
+                regex,
+                typ,
+            }
+        };
+
         Ok(Self {
             name,
-            rule: Rule::Custom {
-                regex: Box::new(regex),
-                typ: Box::new(typ),
-            }
+            rule,
         })
     }
 }
