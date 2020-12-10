@@ -17,13 +17,12 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
 
+mod emit;
 mod parse;
 
 #[proc_macro]
 pub fn parse_to_abstract(input: TokenStream) -> TokenStream {
-    let abs = syn::parse_macro_input!(input as parse::Abstract);
-    println!("{:#?}", abs);
-    let abs2 = parse::Abstract2::from(abs);
+    let abs2 = parse::parse(input);
     println!("{:#?}", abs2);
 
     quote!().into()

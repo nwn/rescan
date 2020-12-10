@@ -1,5 +1,14 @@
 use syn;
+use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
+
+pub fn parse(input: TokenStream) -> Abstract2 {
+    let abs = match syn::parse::<Abstract>(input) {
+        Ok(abs) => abs,
+        Err(err) => panic!(err),
+    };
+    Abstract2::from(abs)
+}
 
 #[derive(Debug)]
 pub struct Abstract2 {
@@ -141,7 +150,7 @@ where T: PartialEq<U> {
 }
 
 #[derive(Debug)]
-pub struct Abstract {
+struct Abstract {
     pub segments: Vec<Segment>,
     positional_rules: Vec<Rule>,
     named_rules: Vec<(String, Rule)>,
