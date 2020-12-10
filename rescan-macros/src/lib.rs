@@ -21,11 +21,13 @@ mod emit;
 mod parse;
 
 #[proc_macro]
-pub fn parse_to_abstract(input: TokenStream) -> TokenStream {
+pub fn scanner(input: TokenStream) -> TokenStream {
     let abs2 = parse::parse(input);
     println!("{:#?}", abs2);
+    let output = emit::emit(abs2);
+    println!("{}", output);
 
-    quote!().into()
+    output
 }
 
 #[proc_macro]

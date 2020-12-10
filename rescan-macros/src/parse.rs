@@ -58,10 +58,6 @@ impl From<Abstract> for Abstract2 {
         }).collect();
 
         // Ensure that outputs cover the range 0..n, where n is the number of outputs.
-        let num_outputs = segments
-            .iter()
-            .filter_map(|seg| seg.capture())
-            .count();
         let mut outputs: Vec<_> = segments
             .iter()
             .filter_map(|seg| seg.capture())

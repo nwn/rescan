@@ -1,5 +1,5 @@
 [package]
-name = "rescan-format"
+name = "rescan-macros"
 version = "0.1.0"
 authors = ["Nathan Wiebe Neufeldt <wn.nathan@gmail.com>"]
 edition = "2018"
@@ -11,4 +11,3 @@ proc-macro = true
 syn = { version = "1", features = ["full", "extra-traits"] }
 quote = "1"
 proc-macro2 = "1"
-regex-syntax = "0.6"
