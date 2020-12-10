@@ -1,15 +1,14 @@
-use super::parse::Abstract2;
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
+use proc_macro2::{TokenStream as TokenStream2};
 use quote::{format_ident, quote, ToTokens};
 
-use crate::parse::{Rule, Segment};
+use crate::{Abstract, Rule, Segment};
 
-pub fn emit(abs: Abstract2) -> TokenStream {
+pub(crate) fn emit(abs: Abstract) -> TokenStream {
     abs.to_token_stream().into()
 }
 
-impl ToTokens for Abstract2 {
+impl ToTokens for Abstract {
     fn to_tokens(&self, tokens: &mut TokenStream2) {
         let mut static_regexes = vec![];
         let mut local_regexes = vec![];
@@ -17,7 +16,7 @@ impl ToTokens for Abstract2 {
             match rule {
                 Rule::Null { regex } => todo!(),
                 Rule::Default { typ } => todo!(),
-                Rule::Custom { regex, typ } => {
+                Rule::Custom { regex, typ: _ } => {
                     let static_ident = format_ident!("REGEX_{}", idx);
                     static_regexes.push(quote! {
                         static #static_ident: LazyRegex = LazyRegex::new(|| {

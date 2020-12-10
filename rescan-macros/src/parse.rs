@@ -1,22 +1,18 @@
 use syn;
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
+use proc_macro2::{Span};
+use crate::{Abstract, Rule};
 
-pub fn parse(input: TokenStream) -> Abstract2 {
-    let abs = match syn::parse::<Abstract>(input) {
+pub(crate) fn parse(input: TokenStream) -> Abstract {
+    let abs = match syn::parse::<Concrete>(input) {
         Ok(abs) => abs,
         Err(err) => panic!(err),
     };
-    Abstract2::from(abs)
+    Abstract::from(abs)
 }
 
-#[derive(Debug)]
-pub struct Abstract2 {
-    pub segments: Vec<Segment<(Option<usize>, usize)>>,
-    pub rules: Vec<Rule>,
-}
-impl From<Abstract> for Abstract2 {
-    fn from(Abstract { segments, positional_rules, named_rules }: Abstract) -> Self {
+impl From<Concrete> for Abstract {
+    fn from(Concrete { segments, positional_rules, named_rules }: Concrete) -> Self {
         let mut pos_idx = 0;
         let mut rule_idx = 0;
         let segments: Vec<_> = segments.into_iter().map(|seg| match seg {
@@ -58,9 +54,7 @@ impl From<Abstract> for Abstract2 {
         }).collect();
 
         // Ensure that outputs cover the range 0..n, where n is the number of outputs.
-        let mut outputs: Vec<_> = segments
-            .iter()
-            .filter_map(|seg| seg.capture())
+        let mut outputs: Vec<_> = iter_captures(&segments)
             .filter_map(|(pos, _rule)| *pos)
             .collect();
         outputs.sort_unstable();
@@ -103,7 +97,7 @@ impl From<Abstract> for Abstract2 {
         }
 
         // Ensure that null rules are only referenced by null captures.
-        for (pos, rule) in segments.iter().filter_map(|seg| seg.capture()) {
+        for (pos, rule) in iter_captures(&segments) {
             if pos.is_some() {
                 let rule = &rules[*rule];
                 if let Rule::Null { .. } = rule {
@@ -145,69 +139,44 @@ where T: PartialEq<U> {
     }
 }
 
-#[derive(Debug)]
-struct Abstract {
+fn iter_captures<Cap>(segments: &[Segment<Cap>]) -> impl Iterator<Item = &Cap> {
+    segments.iter().filter_map(|seg| match seg {
+        Segment::Capture(cap) => Some(cap),
+        Segment::Literal(_) => None,
+    })
+}
+
+struct Concrete {
     pub segments: Vec<Segment>,
     positional_rules: Vec<Rule>,
     named_rules: Vec<(String, Rule)>,
 }
 
-#[derive(Debug)]
-pub enum Segment<Cap = Capture> {
-    Literal(String),
-    Capture(Cap),
-}
-impl<Cap> Segment<Cap> {
-    fn capture(&self) -> Option<&Cap> {
-        if let Segment::Capture(cap) = self {
-            Some(cap)
-        } else {
-            None
-        }
-    }
-}
+type Segment<Cap = Capture> = crate::Segment<Cap>;
 
-#[derive(Debug)]
 struct Capture {
     pos: CapturePos,
     rule: CaptureRule,
 }
 
-#[derive(Debug)]
 enum CapturePos {
     Null,
     Implicit,
     Explicit(usize),
 }
 
-#[derive(Debug)]
 enum CaptureRule {
     Implicit,
     Positional(usize),
     Named(String),
 }
 
-#[derive(Debug)]
 struct Arg {
     name: Option<syn::Ident>,
     rule: Rule,
 }
 
-#[derive(Debug)]
-pub enum Rule {
-    Null {
-        regex: Box<syn::Expr>,
-    },
-    Default {
-        typ: Box<syn::Type>,
-    },
-    Custom {
-        regex: Box<syn::Expr>,
-        typ: Box<syn::Type>,
-    },
-}
-
-impl syn::parse::Parse for Abstract {
+impl syn::parse::Parse for Concrete {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let format_string: syn::LitStr = input.parse()?;
         let segments = parse_format_string(format_string)

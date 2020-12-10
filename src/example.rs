@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use crate::internal::*;
 
 static REGEX_1: LazyRegex = LazyRegex::new(|| {
