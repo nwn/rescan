@@ -13,22 +13,21 @@ impl ToTokens for Abstract {
         let mut static_regexes = vec![];
         let mut local_regexes = vec![];
         for (idx, rule) in self.rules.iter().enumerate() {
-            match rule {
-                Rule::Null { regex } => todo!(),
-                Rule::Default { typ } => todo!(),
-                Rule::Custom { regex, typ: _ } => {
-                    let static_ident = format_ident!("REGEX_{}", idx);
-                    static_regexes.push(quote! {
-                        static #static_ident: LazyRegex = LazyRegex::new(|| {
-                            Regex::new(#regex)
-                        });
-                    });
-                    let local_ident = format_ident!("regex_{}", idx);
-                    local_regexes.push(quote! {
-                        let #local_ident = #static_ident.as_ref()?;
-                    });
-                }
-            }
+            let static_ident = format_ident!("REGEX_{}", idx);
+            let local_ident = format_ident!("regex_{}", idx);
+            let regex_expr = match rule {
+                Rule::Default { typ } => quote!(<#typ as DefaultScan>::DEFAULT_REGEX),
+                Rule::Custom { regex, typ: _ } |
+                Rule::Null { regex } => quote!(#regex),
+            };
+            static_regexes.push(quote! {
+                static #static_ident: LazyRegex = LazyRegex::new(|| {
+                    Regex::new(#regex_expr)
+                });
+            });
+            local_regexes.push(quote! {
+                let #local_ident = #static_ident.as_ref()?;
+            });
         }
 
         let mut literals = vec![];
@@ -50,7 +49,7 @@ impl ToTokens for Abstract {
                     let regex_ident = format_ident!("regex_{}", rule);
                     matches.push(quote! {
                         {
-                            let str_len = match_regex(reader, #regex_ident)?;
+                            let str_len = match_regex(reader, #regex_ident)?.len();
                             advance_from_regex(reader, str_len);
                         }
                     });
@@ -58,13 +57,10 @@ impl ToTokens for Abstract {
                 Segment::Capture((Some(pos), rule)) => {
                     let cap_ident = format_ident!("cap_{}", pos);
                     let (typ, regex) = match self.rules[*rule] {
-                        Rule::Custom { ref typ, .. } => (
-                            typ.as_ref(),
-                            format_ident!("regex_{}", rule).to_token_stream(),
-                        ),
+                        Rule::Custom { ref typ, .. } |
                         Rule::Default { ref typ } => (
                             typ.as_ref(),
-                            quote!(todo!()),
+                            format_ident!("regex_{}", rule).to_token_stream(),
                         ),
                         Rule::Null { .. } => unreachable!(),
                     };

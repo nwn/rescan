@@ -45,7 +45,7 @@ impl From<Concrete> for Abstract {
                             positional_rules.len() + idx
                         } else {
                             // Ensure that the referenced named argument exists.
-                            panic!("Argument named \"{}\" does not exist");
+                            panic!("Argument named \"{}\" does not exist", name);
                         }
                     }
                 };
