@@ -1,5 +1,6 @@
 use regex::Error as RegexError;
 use std::error::Error as StdError;
+use std::io::Error as IoError;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -29,9 +30,9 @@ impl StdError for Error {
         }
     }
 }
-impl From<RegexError> for Error {
-    fn from(error: RegexError) -> Self {
-        Self::RegexError(error)
+impl From<&RegexError> for Error {
+    fn from(error: &RegexError) -> Self {
+        Self::RegexError(error.clone())
     }
 }
 impl From<ScanError> for Error {
@@ -40,8 +41,9 @@ impl From<ScanError> for Error {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub enum ScanError {
+    ScanIoError(IoError),
     ScanDecodeError {
         len: usize,
         bytes: [u8; 4],
@@ -51,9 +53,12 @@ pub enum ScanError {
 }
 impl std::fmt::Display for ScanError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match *self {
+        match self {
+            Self::ScanIoError(io_error) => {
+                io_error.fmt(f)
+            }
             Self::ScanDecodeError { bytes, len } => {
-                write!(f, "invalid UTF-8 sequence: {:x?}", &bytes[..len])
+                write!(f, "invalid UTF-8 sequence: {:x?}", &bytes[..*len])
             }
             Self::ScanLiteralError(lit) => {
                 write!(f, "input text does not match literal \"{}\"", lit)
@@ -65,3 +70,8 @@ impl std::fmt::Display for ScanError {
     }
 }
 impl StdError for ScanError {}
+impl From<IoError> for ScanError {
+    fn from(error: IoError) -> Self {
+        Self::ScanIoError(error)
+    }
+}

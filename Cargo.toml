@@ -7,4 +7,4 @@ edition = "2018"
 [dependencies]
 regex = "1"
 once_cell = "1"
-rescan-format = { path = "rescan-format" }
+#rescan-format = { path = "rescan-format" }
