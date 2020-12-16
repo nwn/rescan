@@ -2,11 +2,8 @@ use rescan;
 
 // Input might look like this: {string: "hello", int: 42, char: 'ß', bool: false, float: 3.14, ignore: _}
 fn main() {
-    while let Ok((string, float, int, bool, char)) =
-        rescan::scanln!("{{string: \"{}\", int: {2}, char: '{4:ch}', bool: {3}, float: {:3}, ignore: {_:ch}}}",
-            String, r"-?\d+" as i32, bool, r"-?\d+\.\d+" as f32, ch = char
-        )
-    {
-        println!("{{string: \"{}\", int: {}, char: '{}', bool: {}, float: {}}}", string, int, char, bool, float);
-    }
+    let stdin = std::io::stdin();
+    let line_scanner = rescan::scan_lines!(stdin.lock(), "{}", ".*" as String);
+
+    line_scanner.map(Result::unwrap).for_each(|(str,)| println!("{}", str));
 }
