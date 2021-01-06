@@ -61,3 +61,17 @@ macro_rules! impl_default_scan {
 impl_default_scan!(bool, "true|false");
 impl_default_scan!(char, ".");
 impl_default_scan!(String, r"\w+");
+
+impl_default_scan!(u8, "[[:digit:]]+");
+impl_default_scan!(u16, "[[:digit:]]+");
+impl_default_scan!(u32, "[[:digit:]]+");
+impl_default_scan!(u64, "[[:digit:]]+");
+impl_default_scan!(u128, "[[:digit:]]+");
+impl_default_scan!(usize, "[[:digit:]]+");
+
+impl_default_scan!(i8, "-?[[:digit:]]+");
+impl_default_scan!(i16, "-?[[:digit:]]+");
+impl_default_scan!(i32, "-?[[:digit:]]+");
+impl_default_scan!(i64, "-?[[:digit:]]+");
+impl_default_scan!(i128, "-?[[:digit:]]+");
+impl_default_scan!(isize, "-?[[:digit:]]+");
