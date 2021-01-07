@@ -7,7 +7,7 @@ macro_rules! scanln {
     ($($t:tt)+) => {{
         let stdin = std::io::stdin();
         let mut reader = rescan::readers::LineReader::new(stdin.lock());
-        let scanner = rescan::scanner!($($t)+);
+        let scanner = rescan::static_scanner!($($t)+);
         scanner(&mut reader)
     }}
 }
@@ -51,7 +51,7 @@ impl<Buf: BufRead> BufRead for LineReader<Buf> {
 macro_rules! scan_lines {
     ($r:expr, $($t:tt)+) => {{
         let reader = $r;
-        let scanner = rescan::scanner!($($t)+);
+        let scanner = rescan::static_scanner!($($t)+);
         rescan::readers::LineIter::new(reader, scanner)
     }}
 }

@@ -17,14 +17,14 @@ pub type LazyRegex = once_cell::sync::Lazy<Result<Regex, RegexError>>;
 /// To prevent unnecessary type errors, a pointer to this function is
 /// emitted in lieu of an actual scanner function when then input to the
 /// `scanner` macro is invalid.
-pub fn dummy<T>(_reader: &mut impl BufRead) -> Result<T> {
+pub fn dummy<T>(_reader: &mut dyn BufRead) -> Result<T> {
     std::unimplemented!()
 }
 
 /// Attempts to read the string `lit` from the reader. If successful, the
 /// reader is automatically advanced past the match. Otherwise, an error
 /// results, and the reader will have advanced past some prefix of `lit`.
-pub fn match_literal(reader: &mut impl BufRead, mut lit: &'static str) -> Result<(), ScanError> {
+pub fn match_literal(reader: &mut dyn BufRead, mut lit: &'static str) -> Result<(), ScanError> {
     let mismatch_error = Err(ScanLiteralError(lit));
     while !lit.is_empty() {
         let buf = try_read_str(reader)?;
@@ -52,7 +52,7 @@ pub fn match_literal(reader: &mut impl BufRead, mut lit: &'static str) -> Result
 /// error is returned. In any case, the reader is not advanced---this must
 /// be done manually by calling the `advance_from_regex` function with the
 /// length of the match from this function.
-pub fn match_regex<'r>(reader: &'r mut impl BufRead, re: &'static Regex) -> Result<&'r str, ScanError> {
+pub fn match_regex<'r>(reader: &'r mut dyn BufRead, re: &'static Regex) -> Result<&'r str, ScanError> {
     let buf = try_read_str(reader)?;
     if let Some(range) = re.find(buf) {
         if range.start() == 0 {
@@ -64,13 +64,13 @@ pub fn match_regex<'r>(reader: &'r mut impl BufRead, re: &'static Regex) -> Resu
 
 /// Advance the reader by the given string. This should only be called with
 /// the length of the match previously returned from `match_regex`.
-pub fn advance_from_regex(reader: &mut impl BufRead, match_len: usize) {
+pub fn advance_from_regex(reader: &mut dyn BufRead, match_len: usize) {
     reader.consume(match_len);
 }
 
 /// Returns the longest valid UTF-8 sequence from the reader, or a
 /// `ScanError` if there are invalid bytes at the start.
-fn try_read_str(reader: &mut impl BufRead) -> Result<&str, ScanError> {
+fn try_read_str(reader: &mut dyn BufRead) -> Result<&str, ScanError> {
     let buf = reader.fill_buf()?;
     longest_utf8_prefix(buf).map_err(|error_bytes| {
         let len = error_bytes.len();

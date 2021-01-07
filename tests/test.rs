@@ -2,7 +2,7 @@ use rescan_macros::scanner;
 
 #[test]
 fn test() {
-    let scanner: rescan::Scanner<std::io::BufReader<std::io::Stdin>, (String, String)> = scanner!("One might expect {} to have at least {}.",
+    let _scanner: rescan::Scanner<(String, String)> = scanner!("One might expect {} to have at least {}.",
         r"[[:alpha:]]+\s[[:alpha:]]+" as String,
         r"[[:digit:]]+\s[[:alpha:]]+" as String,
     );

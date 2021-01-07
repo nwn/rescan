@@ -2,7 +2,7 @@ use proc_macro::TokenStream;
 use proc_macro2::{TokenStream as TokenStream2};
 use quote::{format_ident, quote, ToTokens};
 
-use crate::{Abstract, Rule, Segment};
+use crate::{Abstract, Dispatch, Rule, Segment};
 
 pub(crate) fn emit(abs: Abstract) -> TokenStream {
     abs.to_token_stream().into()
@@ -90,6 +90,11 @@ impl ToTokens for Abstract {
         let captures = join(&captures);
         let types = join(&types);
 
+        let dispatch = match self.dispatch {
+            Dispatch::Static => quote!(impl),
+            Dispatch::Dynamic => quote!(dyn),
+        };
+
         let output = quote! {
             {
                 use rescan::{Scan, DefaultScan};
@@ -97,7 +102,7 @@ impl ToTokens for Abstract {
 
                 #static_regexes
 
-                fn scanner(reader: &mut impl std::io::BufRead) -> Result<(#types)> {
+                fn scanner(reader: &mut #dispatch std::io::BufRead) -> Result<(#types)> {
                     #literals
 
                     #local_regexes
