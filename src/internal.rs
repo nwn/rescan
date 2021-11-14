@@ -11,6 +11,44 @@ pub use crate::Result;
 /// output.
 pub type LazyRegex = once_cell::sync::Lazy<Result<Regex, RegexError>>;
 
+use once_cell::unsync::Lazy;
+type RegexNew = Box<dyn FnOnce() -> Result<Regex, RegexError> + 'static>;
+
+/// The type returned by the `scanner` macro.
+///
+/// To use, pass a [`BufRead`] type into the `scan` function.
+pub struct Scanner<T> {
+    lazy_regexes: Vec<Lazy::<Result<Regex, RegexError>, RegexNew>>,
+    scan_fn: fn(&mut dyn BufRead, &[&Regex]) -> Result<T>,
+}
+impl<T> Scanner<T> {
+    #[doc(hidden)]
+    pub fn new(regexes: &[&'static str], scan_fn: fn(&mut dyn BufRead, &[&Regex]) -> Result<T>) -> Self {
+        // let mut lazy_regexes = vec![];
+        // for re in regexes {
+        //     let re: &'static str = re;
+        //     lazy_regexes.push(
+        //         once_cell::unsync::Lazy::new(Box::new(move || Regex::new(re)) as Box<dyn 'static + FnOnce() -> Result<Regex, RegexError>>)
+        //     );
+        // }
+        let lazy_regexes = regexes
+            .iter()
+            .copied()
+            .map(|re: &'static str| {
+                Lazy::new(Box::new(move || Regex::new(re)) as RegexNew)
+            }).collect();
+        Self {
+            lazy_regexes,
+            // lazy_regexes: regexes.iter().copied().map(|re: &'static str| Lazy::new(Box::new(move || Regex::new(re)) as Box<dyn 'static + FnOnce() -> Result<Regex, RegexError>>)).collect(),
+            scan_fn,
+        }
+    }
+    pub fn scan(&self, reader: &mut dyn BufRead) -> Result<T> {
+        let regexes = self.lazy_regexes.iter().map(|lazy_re| lazy_re.as_ref()).collect::<Result<Vec<_>, _>>()?;
+        (self.scan_fn)(reader, &regexes)
+    }
+}
+
 /// A dummy function with the same signature as that returned by a call to
 /// `scanner`.
 ///
