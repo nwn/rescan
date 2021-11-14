@@ -34,10 +34,10 @@ impl ToTokens for Abstract {
         let mut matches = vec![];
         let mut captures = vec![];
 
-        for (idx, seg) in self.segments.iter().enumerate() {
+        for seg in self.segments.iter() {
             match seg {
                 Segment::Literal(lit) => {
-                    let ident = format_ident!("lit_{}", idx);
+                    let ident = format_ident!("lit_{}", literals.len());
                     literals.push(quote! {
                         let #ident = #lit;
                     });
@@ -56,29 +56,30 @@ impl ToTokens for Abstract {
                 }
                 Segment::Capture((Some(pos), rule)) => {
                     let cap_ident = format_ident!("cap_{}", pos);
-                    let (typ, regex) = match self.rules[*rule] {
-                        Rule::Custom { ref typ, .. } |
-                        Rule::Default { ref typ } => (
+                    let (typ, regex_ident) = match &self.rules[*rule] {
+                        Rule::Custom { typ, .. } |
+                        Rule::Default { typ } => (
                             typ.as_ref(),
-                            format_ident!("regex_{}", rule).to_token_stream(),
+                            format_ident!("regex_{}", rule),
                         ),
+                        // Parser ensures that only null captures can have null rules.
                         Rule::Null { .. } => unreachable!(),
                     };
                     matches.push(quote! {
                         let #cap_ident = {
-                            let str = match_regex(reader, #regex)?;
-                            let val = <#typ as Scan>::scan(str).unwrap();
+                            let str = match_regex(reader, #regex_ident)?;
+                            let val = <#typ as Scan>::scan(str).map_err(Error::from_parse_error)?;
                             let str_len = str.len();
                             advance_from_regex(reader, str_len);
                             val
                         };
                     });
-                    captures.push((pos, quote!(#cap_ident,), quote!(#typ,)));
+                    captures.push((*pos, quote!(#cap_ident,), quote!(#typ,)));
                 }
             }
         }
 
-        captures.sort_unstable_by(|lhs, rhs| lhs.0.cmp(rhs.0));
+        captures.sort_unstable_by(|(lhs, ..), (rhs, ..)| lhs.cmp(rhs));
         let (captures, types): (Vec<_>, Vec<_>) = captures.into_iter()
             .map(|(_num, cap, typ)| (cap, typ))
             .unzip();
@@ -97,18 +98,14 @@ impl ToTokens for Abstract {
 
         let output = quote! {
             {
-                use rescan::{Scan, DefaultScan};
+                use rescan::{Scan, DefaultScan, Error};
                 use rescan::internal::*;
 
                 #static_regexes
-
                 fn scanner(reader: &mut #dispatch std::io::BufRead) -> Result<(#types)> {
                     #literals
-
                     #local_regexes
-
                     #matches
-
                     Ok((#captures))
                 }
 

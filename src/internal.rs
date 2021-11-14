@@ -34,13 +34,11 @@ pub fn match_literal(reader: &mut dyn BufRead, mut lit: &'static str) -> Result<
                 reader.consume(lit.len());
                 return Ok(());
             }
-        } else if !buf.is_empty() {
-            if lit.starts_with(buf) {
-                let advanced = buf.len();
-                lit = &lit[advanced..];
-                reader.consume(advanced);
-                continue;
-            }
+        } else if !buf.is_empty() && lit.starts_with(buf) {
+            let advanced = buf.len();
+            lit = &lit[advanced..];
+            reader.consume(advanced);
+            continue;
         }
         return mismatch_error;
     }
@@ -89,21 +87,18 @@ fn try_read_str(reader: &mut dyn BufRead) -> Result<&str, ScanError> {
 /// If there are erroneous bytes at the start of the slice, they will be
 /// returned as an `Err` instead.
 fn longest_utf8_prefix(bytes: &[u8]) -> Result<&str, &[u8]> {
-    match std::str::from_utf8(bytes) {
-        Ok(str) => Ok(str),
-        Err(utf8_error) => {
-            match (utf8_error.valid_up_to(), utf8_error.error_len()) {
-                (0, Some(error_len)) => Err(&bytes[..error_len]),
-                (valid_up_to, _) => {
-                    // SAFETY: The `Utf8Error::valid_up_to()` function guarantees
-                    // that the range up to that point is valid UTF-8.
-                    unsafe {
-                        Ok(std::str::from_utf8_unchecked(&bytes[..valid_up_to]))
-                    }
+    std::str::from_utf8(bytes).or_else(|utf8_error| {
+        match (utf8_error.valid_up_to(), utf8_error.error_len()) {
+            (0, Some(error_len)) => Err(&bytes[..error_len]),
+            (valid_up_to, _) => {
+                // SAFETY: The `Utf8Error::valid_up_to()` function guarantees
+                // that the range up to that point is valid UTF-8.
+                unsafe {
+                    Ok(std::str::from_utf8_unchecked(&bytes[..valid_up_to]))
                 }
             }
         }
-    }
+    })
 }
 
 #[test]

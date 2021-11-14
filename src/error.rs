@@ -7,10 +7,16 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 // The error type returned by the top-level macro. Errors can occur either
 // when compiling the regexes or when parsing a capture fails.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     RegexError(RegexError),
     ScanError(ScanError),
     ParseError(Box<dyn StdError>),
+}
+impl Error {
+    pub fn from_parse_error(error: impl StdError + 'static) -> Self {
+        Self::ParseError(Box::new(error))
+    }
 }
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -42,6 +48,7 @@ impl From<ScanError> for Error {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum ScanError {
     ScanIoError(IoError),
     ScanDecodeError {
