@@ -7,13 +7,10 @@ mod impls;
 #[cfg(feature = "readers")]
 pub mod readers;
 
-pub use rescan_macros::{scanner, static_scanner};
+pub use rescan_macros::scanner;
+pub use internal::Scanner;
 pub use error::{ScanError, Error, Result};
 use std::error::Error as StdError;
-use std::io::BufRead;
-
-/// The type returned by the `scanner` macro.
-pub type Scanner<T> = fn(&mut dyn BufRead) -> Result<T>;
 
 /// Parse a value from a string.
 pub trait Scan: Sized {

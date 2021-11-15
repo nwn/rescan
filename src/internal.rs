@@ -1,51 +1,38 @@
 use crate::error::ScanError::{self, *};
 use std::io::BufRead;
-use regex::Error as RegexError;
+use once_cell::unsync::Lazy;
 
-pub use regex::Regex;
+pub use regex::{Regex, Error as RegexError};
 pub use crate::Result;
 
-/// The `Sync` version of `Lazy` from the `once_cell` crate.
+/// The type returned by the [`scanner`] macro.
 ///
-/// This is placed here so that it has a known location when referenced by macro
-/// output.
-pub type LazyRegex = once_cell::sync::Lazy<Result<Regex, RegexError>>;
-
-use once_cell::unsync::Lazy;
-type RegexNew = Box<dyn FnOnce() -> Result<Regex, RegexError> + 'static>;
-
-/// The type returned by the `scanner` macro.
+/// To use, pass a [`BufRead`] type into the [`scan`] function.
 ///
-/// To use, pass a [`BufRead`] type into the `scan` function.
+/// [`scanner`]: macro.scanner.html
+/// [`BufRead`]: https://doc.rust-lang.org/std/io/trait.BufRead.html
+/// [`scan`]: #method.scan
 pub struct Scanner<T> {
-    lazy_regexes: Vec<Lazy::<Result<Regex, RegexError>, RegexNew>>,
-    scan_fn: fn(&mut dyn BufRead, &[&Regex]) -> Result<T>,
+    lazy_regexes: Lazy<Result<Vec<Regex>, RegexError>>,
+    scan_fn: fn(&mut dyn BufRead, &[Regex]) -> Result<T>,
 }
 impl<T> Scanner<T> {
     #[doc(hidden)]
-    pub fn new(regexes: &[&'static str], scan_fn: fn(&mut dyn BufRead, &[&Regex]) -> Result<T>) -> Self {
-        // let mut lazy_regexes = vec![];
-        // for re in regexes {
-        //     let re: &'static str = re;
-        //     lazy_regexes.push(
-        //         once_cell::unsync::Lazy::new(Box::new(move || Regex::new(re)) as Box<dyn 'static + FnOnce() -> Result<Regex, RegexError>>)
-        //     );
-        // }
-        let lazy_regexes = regexes
-            .iter()
-            .copied()
-            .map(|re: &'static str| {
-                Lazy::new(Box::new(move || Regex::new(re)) as RegexNew)
-            }).collect();
+    pub fn new(regex_fn: fn() -> Result<Vec<Regex>, RegexError>, scan_fn: fn(&mut dyn BufRead, &[Regex]) -> Result<T>) -> Self {
         Self {
-            lazy_regexes,
-            // lazy_regexes: regexes.iter().copied().map(|re: &'static str| Lazy::new(Box::new(move || Regex::new(re)) as Box<dyn 'static + FnOnce() -> Result<Regex, RegexError>>)).collect(),
+            lazy_regexes: Lazy::new(regex_fn),
             scan_fn,
         }
     }
+
+    /// Attempts to read values of type `T` from the reader.
+    ///
+    /// This function will fail if the contents of the reader do not match the
+    /// format string used to create this `Scanner`. In this case, an `Err` is
+    /// returned and the reader will have advanced by an unspecified amount.
     pub fn scan(&self, reader: &mut dyn BufRead) -> Result<T> {
-        let regexes = self.lazy_regexes.iter().map(|lazy_re| lazy_re.as_ref()).collect::<Result<Vec<_>, _>>()?;
-        (self.scan_fn)(reader, &regexes)
+        let regexes = self.lazy_regexes.as_ref()?;
+        (self.scan_fn)(reader, regexes)
     }
 }
 
@@ -62,8 +49,8 @@ pub fn dummy<T>(_reader: &mut dyn BufRead) -> Result<T> {
 /// Attempts to read the string `lit` from the reader. If successful, the
 /// reader is automatically advanced past the match. Otherwise, an error
 /// results, and the reader will have advanced past some prefix of `lit`.
-pub fn match_literal(reader: &mut dyn BufRead, mut lit: &'static str) -> Result<(), ScanError> {
-    let mismatch_error = Err(ScanLiteralError(lit));
+pub fn match_literal(reader: &mut dyn BufRead, mut lit: &str) -> Result<(), ScanError> {
+    let mismatch_error = Err(ScanLiteralError(lit.into()));
     while !lit.is_empty() {
         let buf = try_read_str(reader)?;
 
@@ -88,14 +75,14 @@ pub fn match_literal(reader: &mut dyn BufRead, mut lit: &'static str) -> Result<
 /// error is returned. In any case, the reader is not advanced---this must
 /// be done manually by calling the `advance_from_regex` function with the
 /// length of the match from this function.
-pub fn match_regex<'r>(reader: &'r mut dyn BufRead, re: &'static Regex) -> Result<&'r str, ScanError> {
+pub fn match_regex<'r>(reader: &'r mut dyn BufRead, re: &Regex) -> Result<&'r str, ScanError> {
     let buf = try_read_str(reader)?;
     if let Some(range) = re.find(buf) {
         if range.start() == 0 {
             return Ok(range.as_str());
         }
     }
-    Err(ScanRegexError(re.as_str()))
+    Err(ScanRegexError(re.as_str().into()))
 }
 
 /// Advance the reader by the given string. This should only be called with

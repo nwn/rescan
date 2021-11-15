@@ -55,8 +55,8 @@ pub enum ScanError {
         len: usize,
         bytes: [u8; 4],
     },
-    ScanLiteralError(&'static str),
-    ScanRegexError(&'static str),
+    ScanLiteralError(String),
+    ScanRegexError(String),
 }
 impl std::fmt::Display for ScanError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

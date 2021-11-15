@@ -1,7 +1,7 @@
 use syn;
 use proc_macro::TokenStream;
 use proc_macro2::{Span};
-use crate::{Abstract, Dispatch, Rule};
+use crate::{Abstract, Rule};
 
 pub(crate) fn parse(input: TokenStream) -> Abstract {
     let abs = match syn::parse::<Concrete>(input) {
@@ -109,7 +109,6 @@ impl From<Concrete> for Abstract {
         Self {
             segments,
             rules,
-            dispatch: Dispatch::Static,
         }
     }
 }

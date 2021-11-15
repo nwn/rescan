@@ -1,17 +1,18 @@
 use memchr::memchr;
 use std::io::{BufRead, Read, Result as IoResult};
-use crate::Result;
+use crate::{Scanner, Result};
 
 #[macro_export]
 macro_rules! scanln {
     ($($t:tt)+) => {{
         let stdin = std::io::stdin();
         let mut reader = rescan::readers::LineReader::new(stdin.lock());
-        let scanner = rescan::static_scanner!($($t)+);
-        scanner(&mut reader)
+        let scanner = rescan::scanner!($($t)+);
+        scanner.scan(&mut reader)
     }}
 }
 
+#[doc(hidden)]
 pub struct LineReader<Buf: BufRead> {
     inner: Buf,
     next_newline: Option<usize>,
@@ -26,7 +27,10 @@ impl<Buf: BufRead> LineReader<Buf> {
 }
 impl<Buf: BufRead> Read for LineReader<Buf> {
     fn read(&mut self, _buf: &mut [u8]) -> IoResult<usize> {
-        panic!("The `LineReader` type does not actually implement `Read`, and must instead by used through its `BufRead` interface.")
+        unimplemented!(concat!(
+            "The `LineReader` type does not actually implement `Read`, ",
+            "and must instead by used through its `BufRead` interface."
+        ))
     }
 }
 impl<Buf: BufRead> BufRead for LineReader<Buf> {
@@ -51,17 +55,17 @@ impl<Buf: BufRead> BufRead for LineReader<Buf> {
 macro_rules! scan_lines {
     ($r:expr, $($t:tt)+) => {{
         let reader = $r;
-        let scanner = rescan::static_scanner!($($t)+);
+        let scanner = rescan::scanner!($($t)+);
         rescan::readers::LineIter::new(reader, scanner)
     }}
 }
 
 pub struct LineIter<Buf: BufRead, Output> {
-    scanner: fn(&mut LineReader<Buf>) -> Result<Output>,
+    scanner: crate::Scanner<Output>,
     reader: LineReader<Buf>,
 }
 impl<Buf: BufRead, Output> LineIter<Buf, Output> {
-    pub fn new(reader: Buf, scanner: fn(&mut LineReader<Buf>) -> Result<Output>) -> Self {
+    pub fn new(reader: Buf, scanner: Scanner<Output>) -> Self {
         Self {
             reader: LineReader::new(reader),
             scanner,
@@ -77,6 +81,6 @@ impl<Buf: BufRead, Output> Iterator for LineIter<Buf, Output> {
                 return None;
             }
         }
-        Some((self.scanner)(&mut self.reader))
+        Some(self.scanner.scan(&mut self.reader))
     }
 }
