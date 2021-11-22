@@ -28,6 +28,11 @@ impl From<Concrete> for Abstract {
                 };
                 let rule = match cap.rule {
                     CaptureRule::Implicit => {
+                        // Ensure that implicit (positional) references are within range.
+                        let num_positions = positional_rules.len();
+                        if rule_idx >= num_positions {
+                            panic!("Too many positional arguments (references position {}, but there are only {})", rule_idx, num_positions);
+                        }
                         rule_idx += 1;
                         rule_idx - 1
                     }
@@ -83,9 +88,8 @@ impl From<Concrete> for Abstract {
         }
 
         // Ensure that all rules are referenced.
-        let mut rule_refs: Vec<_> = segments
-            .iter()
-            .filter_map(|seg| if let Segment::Capture(cap) = seg { Some(cap.1) } else { None })
+        let mut rule_refs: Vec<_> = iter_captures(&segments)
+            .map(|&(_pos, rule)| rule)
             .collect();
         rule_refs.sort_unstable();
         rule_refs.dedup();
