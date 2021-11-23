@@ -42,7 +42,7 @@ impl<T> Scanner<T> {
 /// To prevent unnecessary type errors, a pointer to this function is
 /// emitted in lieu of an actual scanner function when then input to the
 /// `scanner` macro is invalid.
-pub fn dummy<T>(_reader: &mut dyn BufRead) -> Result<T> {
+pub fn dummy<T>() -> Scanner<T> {
     std::unimplemented!()
 }
 
