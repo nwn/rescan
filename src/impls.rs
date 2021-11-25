@@ -58,20 +58,34 @@ macro_rules! impl_default_scan {
     }
 }
 
-impl_default_scan!(bool, "true|false");
-impl_default_scan!(char, ".");
+impl_default_scan!(bool, r"true|false");
+impl_default_scan!(char, r".");
 impl_default_scan!(String, r"\w+");
 
-impl_default_scan!(u8, "[[:digit:]]+");
-impl_default_scan!(u16, "[[:digit:]]+");
-impl_default_scan!(u32, "[[:digit:]]+");
-impl_default_scan!(u64, "[[:digit:]]+");
-impl_default_scan!(u128, "[[:digit:]]+");
-impl_default_scan!(usize, "[[:digit:]]+");
+const UINT_REGEX: &str = r"\+?[0-9]+";
+impl_default_scan!(u8, UINT_REGEX);
+impl_default_scan!(u16, UINT_REGEX);
+impl_default_scan!(u32, UINT_REGEX);
+impl_default_scan!(u64, UINT_REGEX);
+impl_default_scan!(u128, UINT_REGEX);
+impl_default_scan!(usize, UINT_REGEX);
+impl_default_scan!(std::num::NonZeroU8, UINT_REGEX);
+impl_default_scan!(std::num::NonZeroU16, UINT_REGEX);
+impl_default_scan!(std::num::NonZeroU32, UINT_REGEX);
+impl_default_scan!(std::num::NonZeroU64, UINT_REGEX);
+impl_default_scan!(std::num::NonZeroU128, UINT_REGEX);
+impl_default_scan!(std::num::NonZeroUsize, UINT_REGEX);
 
-impl_default_scan!(i8, "-?[[:digit:]]+");
-impl_default_scan!(i16, "-?[[:digit:]]+");
-impl_default_scan!(i32, "-?[[:digit:]]+");
-impl_default_scan!(i64, "-?[[:digit:]]+");
-impl_default_scan!(i128, "-?[[:digit:]]+");
-impl_default_scan!(isize, "-?[[:digit:]]+");
+const INT_REGEX: &str = r"[+-]?[0-9]+";
+impl_default_scan!(i8, INT_REGEX);
+impl_default_scan!(i16, INT_REGEX);
+impl_default_scan!(i32, INT_REGEX);
+impl_default_scan!(i64, INT_REGEX);
+impl_default_scan!(i128, INT_REGEX);
+impl_default_scan!(isize, INT_REGEX);
+impl_default_scan!(std::num::NonZeroI8, INT_REGEX);
+impl_default_scan!(std::num::NonZeroI16, INT_REGEX);
+impl_default_scan!(std::num::NonZeroI32, INT_REGEX);
+impl_default_scan!(std::num::NonZeroI64, INT_REGEX);
+impl_default_scan!(std::num::NonZeroI128, INT_REGEX);
+impl_default_scan!(std::num::NonZeroIsize, INT_REGEX);
