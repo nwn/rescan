@@ -10,14 +10,22 @@ cargo-build:
     - rustc --version && cargo --version
     - cargo build --workspace --verbose
 
+cargo-doc:
+  stage: build
+  script:
+    - rustc --version && cargo --version
+    - cargo doc --workspace --verbose
+
 cargo-test:
   stage: test
+  needs: [cargo-build]
   script:
     - rustc --version && cargo --version
     - cargo test --workspace --verbose
 
 cargo-clippy:
   stage: test
+  needs: [cargo-build]
   script:
     - rustup --version
     - rustup --verbose component add clippy
