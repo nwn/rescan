@@ -1,0 +1,21 @@
+image: rust:latest
+
+stages:
+  - build
+  - test
+
+cargo-build:
+  stage: build
+  script:
+    - rustc --version && cargo --version  # Print version info for debugging
+    - cargo build --workspace --verbose
+
+cargo-test:
+  stage: test
+  script:
+    - cargo test --workspace --verbose
+
+cargo-clippy:
+  stage: test
+  script:
+    - cargo clippy --workspace --verbose
