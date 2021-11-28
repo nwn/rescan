@@ -4,6 +4,10 @@ stages:
   - build
   - test
 
+variables:
+  RUSTFLAGS: "-Dwarnings"
+  RUSTDOCFLAGS: "-Dwarnings"
+
 cargo-build:
   stage: build
   script:
