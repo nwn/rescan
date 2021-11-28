@@ -78,7 +78,7 @@ impl ToTokens for Abstract {
 
         let output = quote! {
             {
-                use rescan::{Scan, DefaultScan, Error};
+                use rescan::{Scan, DefaultScan, Scanner, Error};
                 use rescan::internal::*;
 
                 fn build_regexes() -> Result<Vec<Regex>, RegexError> {

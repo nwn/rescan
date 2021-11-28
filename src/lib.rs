@@ -3,12 +3,11 @@ pub mod internal;
 mod error;
 mod example;
 mod impls;
-
-#[cfg(feature = "readers")]
+mod scanner;
 pub mod readers;
 
 pub use rescan_macros::scanner;
-pub use internal::Scanner;
+pub use scanner::Scanner;
 pub use error::{ScanError, Error, Result};
 use std::error::Error as StdError;
 

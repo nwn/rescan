@@ -1,40 +1,8 @@
 use crate::error::ScanError::{self, *};
 use std::io::BufRead;
-use once_cell::unsync::Lazy;
 
 pub use regex::{Regex, Error as RegexError};
 pub use crate::Result;
-
-/// The type returned by the [`scanner`] macro.
-///
-/// To use, pass a [`BufRead`] type into the [`scan`] function.
-///
-/// [`scanner`]: macro.scanner.html
-/// [`BufRead`]: https://doc.rust-lang.org/std/io/trait.BufRead.html
-/// [`scan`]: #method.scan
-pub struct Scanner<T> {
-    lazy_regexes: Lazy<Result<Vec<Regex>, RegexError>>,
-    scan_fn: fn(&mut dyn BufRead, &[Regex]) -> Result<T>,
-}
-impl<T> Scanner<T> {
-    #[doc(hidden)]
-    pub fn new(regex_fn: fn() -> Result<Vec<Regex>, RegexError>, scan_fn: fn(&mut dyn BufRead, &[Regex]) -> Result<T>) -> Self {
-        Self {
-            lazy_regexes: Lazy::new(regex_fn),
-            scan_fn,
-        }
-    }
-
-    /// Attempts to read values of type `T` from the reader.
-    ///
-    /// This function will fail if the contents of the reader do not match the
-    /// format string used to create this `Scanner`. In this case, an `Err` is
-    /// returned and the reader will have advanced by an unspecified amount.
-    pub fn scan(&self, reader: &mut dyn BufRead) -> Result<T> {
-        let regexes = self.lazy_regexes.as_ref()?;
-        (self.scan_fn)(reader, regexes)
-    }
-}
 
 /// A dummy function with the same signature as that returned by a call to
 /// `scanner`.
