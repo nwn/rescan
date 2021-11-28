@@ -1,82 +1,95 @@
-use memchr::memchr;
-use std::io::{BufRead, Read, Result as IoResult};
-use crate::Result;
+use std::io::{BufRead, Result as IoResult};
+use crate::{Scanner, ScanError, Result};
 
+/// Read values from a line of standard input.
+///
+/// Input is read from [`stdin`] until either the input is exhausted or a
+/// newline character (`'\n'`) is read. The line, after stripping any line
+/// endings (`"\n"` or `"\r\n"`), is scanned according to the given format.
+///
+/// See the [module-level documentation](crate) for a description of the
+/// argument syntax.
+///
+/// [`stdin`]: std::io::stdin
 #[macro_export]
 macro_rules! scanln {
     ($($t:tt)+) => {{
         let stdin = std::io::stdin();
-        let mut reader = rescan::readers::LineReader::new(stdin.lock());
-        let scanner = rescan::scanner!($($t)+);
-        scanner(&mut reader)
+        let mut stdin_lock = stdin.lock();
+        $crate::scanln_from!(&mut stdin_lock, $($t)+)
     }}
 }
 
-pub struct LineReader<Buf: BufRead> {
-    inner: Buf,
-    next_newline: Option<usize>,
-}
-impl<Buf: BufRead> LineReader<Buf> {
-    pub fn new(inner: Buf) -> Self {
-        Self {
-            inner,
-            next_newline: None,
-        }
-    }
-}
-impl<Buf: BufRead> Read for LineReader<Buf> {
-    fn read(&mut self, _buf: &mut [u8]) -> IoResult<usize> {
-        panic!("The `LineReader` type does not actually implement `Read`, and must instead by used through its `BufRead` interface.")
-    }
-}
-impl<Buf: BufRead> BufRead for LineReader<Buf> {
-    fn fill_buf(&mut self) -> IoResult<&[u8]> {
-        let mut buf = self.inner.fill_buf()?;
-        if let Some(newline) = memchr(b'\n', buf) {
-            buf = &buf[..=newline];
-            self.next_newline = Some(newline);
-        }
-        Ok(buf)
-    }
-    fn consume(&mut self, mut amt: usize) {
-        if Some(amt) == self.next_newline {
-            amt += 1;
-            self.next_newline = None;
-        }
-        self.inner.consume(amt)
-    }
-}
-
+/// Read values from a line of input.
+///
+/// Input is read from `$r`, an instance of [`BufRead`], until either the input
+/// is exhausted or a newline character (`'\n'`) is read. The line, after
+/// stripping any line endings (`"\n"` or `"\r\n"`), is scanned according to the
+/// given format.
+///
+/// See the [module-level documentation](crate) for a description of the
+/// argument syntax.
 #[macro_export]
-macro_rules! scan_lines {
+macro_rules! scanln_from {
     ($r:expr, $($t:tt)+) => {{
-        let reader = $r;
-        let scanner = rescan::scanner!($($t)+);
-        rescan::readers::LineIter::new(reader, scanner)
+        match $crate::readers::read_line($r) {
+            Ok(line) => rescan::scanner!($($t)+).scan(&mut line.unwrap_or_default().as_slice()),
+            Err(err) => Err($crate::ScanError::from(err).into()),
+        }
     }}
 }
 
-pub struct LineIter<Buf: BufRead, Output> {
-    scanner: fn(&mut LineReader<Buf>) -> Result<Output>,
-    reader: LineReader<Buf>,
+/// An iterator that reads values from lines of a [`BufRead`].
+///
+/// This struct is created by calling [`scan_lines`](crate::Scanner::scan_lines)
+/// with a `BufRead`.
+pub struct LineIter<'a, Output> {
+    scanner: &'a Scanner<Output>,
+    reader: &'a mut dyn BufRead,
 }
-impl<Buf: BufRead, Output> LineIter<Buf, Output> {
-    pub fn new(reader: Buf, scanner: fn(&mut LineReader<Buf>) -> Result<Output>) -> Self {
-        Self {
-            reader: LineReader::new(reader),
-            scanner,
-        }
+impl<'a, Output> LineIter<'a, Output> {
+    pub(crate) fn new(scanner: &'a Scanner<Output>, reader: &'a mut dyn BufRead) -> Self {
+        Self { reader, scanner }
     }
 }
-impl<Buf: BufRead, Output> Iterator for LineIter<Buf, Output> {
+impl<'a, Output> Iterator for LineIter<'a, Output> {
     type Item = Result<Output>;
     fn next(&mut self) -> Option<Self::Item> {
-        if let Ok(buf) = self.reader.inner.fill_buf() {
-            if buf.is_empty() {
-                // Reached EOF
-                return None;
+        match read_line(self.reader).transpose() {
+            Some(Ok(line)) => Some(self.scanner.scan(&mut line.as_slice())),
+            Some(Err(err)) => Some(Err(ScanError::from(err).into())),
+            None => None,
+        }
+    }
+}
+
+/// Read a single line from a [`BufRead`].
+///
+/// Reads bytes from `reader` until either the first newline character (`'\n'`)
+/// or `EOF` is reached. Any error when reading from `reader` is returned as-is.
+/// If `reader` has already reached the `EOF`, `Ok(None)` is returned.
+#[doc(hidden)]
+pub fn read_line(reader: &mut dyn BufRead) -> IoResult<Option<Vec<u8>>> {
+    let mut buf = vec![];
+    reader.read_until(b'\n', &mut buf)?;
+    if !buf.is_empty() {
+        if buf.ends_with(&[b'\n']) {
+            buf.pop();
+            if buf.ends_with(&[b'\r']) {
+                buf.pop();
             }
         }
-        Some((self.scanner)(&mut self.reader))
+        Ok(Some(buf))
+    } else {
+        Ok(None)
     }
+}
+
+#[test]
+fn line_reader() {
+    let mut reader = "A\nBC\nD".as_bytes();
+    assert_eq!(Some(b"A".to_vec()), read_line(&mut reader).unwrap());
+    assert_eq!(Some(b"BC"[..].to_vec()), read_line(&mut reader).unwrap());
+    assert_eq!(Some(b"D"[..].to_vec()), read_line(&mut reader).unwrap());
+    assert_eq!(None, read_line(&mut reader).unwrap().as_ref());
 }

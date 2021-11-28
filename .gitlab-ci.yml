@@ -1,0 +1,25 @@
+image: rust:latest
+
+stages:
+  - build
+  - test
+
+cargo-build:
+  stage: build
+  script:
+    - rustc --version && cargo --version
+    - cargo build --workspace --verbose
+
+cargo-test:
+  stage: test
+  script:
+    - rustc --version && cargo --version
+    - cargo test --workspace --verbose
+
+cargo-clippy:
+  stage: test
+  script:
+    - rustup --version
+    - rustup --verbose component add clippy
+    - rustc --version && cargo --version
+    - cargo clippy --workspace --verbose

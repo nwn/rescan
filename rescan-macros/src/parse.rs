@@ -6,7 +6,7 @@ use crate::{Abstract, Rule};
 pub(crate) fn parse(input: TokenStream) -> Abstract {
     let abs = match syn::parse::<Concrete>(input) {
         Ok(abs) => abs,
-        Err(err) => panic!(err),
+        Err(err) => panic!("{}", err),
     };
     Abstract::from(abs)
 }
@@ -28,6 +28,11 @@ impl From<Concrete> for Abstract {
                 };
                 let rule = match cap.rule {
                     CaptureRule::Implicit => {
+                        // Ensure that implicit (positional) references are within range.
+                        let num_positions = positional_rules.len();
+                        if rule_idx >= num_positions {
+                            panic!("Too many positional arguments (references position {}, but there are only {})", rule_idx, num_positions);
+                        }
                         rule_idx += 1;
                         rule_idx - 1
                     }
@@ -83,9 +88,8 @@ impl From<Concrete> for Abstract {
         }
 
         // Ensure that all rules are referenced.
-        let mut rule_refs: Vec<_> = segments
-            .iter()
-            .filter_map(|seg| if let Segment::Capture(cap) = seg { Some(cap.1) } else { None })
+        let mut rule_refs: Vec<_> = iter_captures(&segments)
+            .map(|&(_pos, rule)| rule)
             .collect();
         rule_refs.sort_unstable();
         rule_refs.dedup();
@@ -261,122 +265,134 @@ impl syn::parse::Parse for Arg {
 }
 
 fn parse_format_string(input: syn::LitStr) -> Result<Vec<Segment>, String> {
-    struct Parser<'s> {
-        source: &'s str,
-        pos: usize,
-        output: Vec<Segment>,
-    }
-    impl<'s> Parser<'s> {
-        fn new(source: &'s str) -> Self {
-            Self {
-                source,
-                pos: 0,
-                output: vec![],
-            }
-        }
-        fn remainder(&self) -> &str {
-            &self.source[self.pos..]
-        }
-        fn parse(mut self) -> Result<Vec<Segment>, String> {
-            loop {
-                if self.pos >= self.source.len() { break; }
-                self.parse_literal()?;
-                if self.pos >= self.source.len() { break; }
-                self.parse_capture()?;
-            }
-            Ok(self.output)
-        }
-        fn parse_literal(&mut self) -> Result<(), String> {
-            let mut result = String::new();
-            let source = &self.source.as_bytes();
-            while let Some(&ch) = source.get(self.pos) {
-                match ch as char {
-                    '{' | '}' if source.get(self.pos + 1) == Some(&ch) => self.pos += 1,
-                    '{' => break,
-                    '}' => return Err("Unmatched '}' in format string".into()),
-                    _ => (),
-                }
-                result.push(ch as char);
-                self.pos += 1;
-            }
-            if !result.is_empty() {
-                self.output.push(Segment::Literal(result));
-            }
-            Ok(())
-        }
-        fn parse_capture(&mut self) -> Result<(), String> {
-            // First check for the common case.
-            if self.remainder().starts_with("{}") {
-                self.pos += 2;
-                self.output.push(Segment::Capture(Capture {
-                    pos: CapturePos::Implicit,
-                    rule: CaptureRule::Implicit,
-                }));
-                return Ok(());
-            }
+    FormatStringParser::new(&input.value()).parse()
+}
 
-            assert!(self.remainder().starts_with("{"));
+struct FormatStringParser<'s> {
+    source: &'s str,
+    pos: usize,
+    output: Vec<Segment>,
+}
+impl<'s> FormatStringParser<'s> {
+    fn new(source: &'s str) -> Self {
+        Self {
+            source,
+            pos: 0,
+            output: vec![],
+        }
+    }
+    fn remainder(&self) -> &str {
+        &self.source[self.pos..]
+    }
+    fn parse(mut self) -> Result<Vec<Segment>, String> {
+        loop {
+            if self.pos >= self.source.len() { break; }
+            self.parse_literal()?;
+            if self.pos >= self.source.len() { break; }
+            self.parse_capture()?;
+        }
+        Ok(self.output)
+    }
+    fn parse_literal(&mut self) -> Result<(), String> {
+        let mut result = String::new();
+        let source = &self.source.as_bytes();
+        while let Some(&ch) = source.get(self.pos) {
+            match ch as char {
+                '{' | '}' if source.get(self.pos + 1) == Some(&ch) => self.pos += 1,
+                '{' => break,
+                '}' => return Err("Unmatched '}' in format string".into()),
+                _ => (),
+            }
+            result.push(ch as char);
             self.pos += 1;
+        }
+        if !result.is_empty() {
+            self.output.push(Segment::Literal(result));
+        }
+        Ok(())
+    }
+    fn parse_capture(&mut self) -> Result<(), String> {
+        // First check for the common case.
+        if self.remainder().starts_with("{}") {
+            self.pos += 2;
+            self.output.push(Segment::Capture(Capture {
+                pos: CapturePos::Implicit,
+                rule: CaptureRule::Implicit,
+            }));
+            return Ok(());
+        }
 
-            let source = self.remainder();
-            let end_of_pos = source
-                .find(|ch: char| ch != '_' && !ch.is_ascii_digit())
-                .ok_or_else(|| String::from("Unmatched '{' in format string"))?;
-            let pos = &source[..end_of_pos];
-            let pos = match pos {
-                "_" => CapturePos::Null,
-                "" => CapturePos::Implicit,
-                _ => if let Ok(num) = pos.parse() {
-                    CapturePos::Explicit(num)
-                } else {
-                    return Err(format!("Invalid position: '{}'", pos));
-                }
-            };
-            self.pos += end_of_pos;
+        assert!(self.remainder().starts_with("{"));
+        self.pos += 1;
 
-            let source = self.remainder();
-            if source.starts_with('}') {
-                self.pos += 1;
-                self.output.push(Segment::Capture(Capture {
-                    pos,
-                    rule: CaptureRule::Implicit,
-                }));
-                return Ok(());
-            } else if source.starts_with(':') {
-                self.pos += 1;
+        // Extract the first field: the output position of this capture.
+        // It will be one of:
+        //   - Null ("_"), meaning the regex will be matched, but not captured
+        //   - Implicit (""), meaning the position of the output will be sequential from the preceding implicit capture
+        //   - Explicit ("2"), meaning the captured value will be output in the given position, e.g. 2
+        let source = self.remainder();
+        let end_of_pos = source
+            .find(|ch: char| ch != '_' && !ch.is_ascii_digit())
+            .ok_or_else(|| String::from("Unmatched '{' in format string"))?;
+        let pos = &source[..end_of_pos];
+        let pos = match pos {
+            "_" => CapturePos::Null,
+            "" => CapturePos::Implicit,
+            _ => if let Ok(num) = pos.parse() {
+                CapturePos::Explicit(num)
             } else {
-                return Err(format!("Unexpected character '{}' in format string", source.chars().next().unwrap()));
+                return Err(format!("Invalid position: '{}'", pos));
             }
+        };
+        self.pos += end_of_pos;
 
-            let source = self.remainder();
-            let end_of_rule = source
-                .find(|ch: char| ch != '_' && !ch.is_ascii_alphanumeric())
-                .ok_or_else(|| String::from("Unmatched '{' in format string"))?;
-            let rule = &source[..end_of_rule];
-            let rule = if rule.starts_with(|ch: char| ch == '_' || ch.is_ascii_alphabetic()) {
-                CaptureRule::Named(rule.into())
-            } else if rule.is_empty() {
-                CaptureRule::Implicit
-            } else if let Ok(num) = rule.parse() {
-                CaptureRule::Positional(num)
-            } else {
-                return Err(format!("Invalid rule: '{}'", rule));
-            };
-            self.pos += end_of_rule;
+        // Exit early if there are no remaining fields. We'll assume the rule used corresponds to its position.
+        let source = self.remainder();
+        if source.starts_with('}') {
+            self.pos += 1;
+            self.output.push(Segment::Capture(Capture {
+                pos,
+                rule: CaptureRule::Implicit,
+            }));
+            return Ok(());
+        } else if source.starts_with(':') {
+            self.pos += 1;
+        } else {
+            return Err(format!("Unexpected character '{}' in format string", source.chars().next().unwrap()));
+        }
 
-            let source = self.remainder();
-            if source.starts_with('}') {
-                self.pos += 1;
-                self.output.push(Segment::Capture(Capture {
-                    pos,
-                    rule,
-                }));
-                return Ok(());
-            } else {
-                return Err(format!("Unexpected character '{}' in format string", source.chars().next().unwrap()));
-            }
+        // Extract the second field: a reference to the argument describing this capture's pattern and type.
+        // This will be one of:
+        //   - Implicit (""), meaning the argument is chosen by its position
+        //   - Positional ("2"), meaning the argument at the given position will be used, e.g. 2
+        //   - Named ("word"), meaning the argument with the given label will be used, e.g. "word = ..."
+        let source = self.remainder();
+        let end_of_rule = source
+            .find(|ch: char| ch != '_' && !ch.is_ascii_alphanumeric())
+            .ok_or_else(|| String::from("Unmatched '{' in format string"))?;
+        let rule = &source[..end_of_rule];
+        let rule = if rule.starts_with(|ch: char| ch == '_' || ch.is_ascii_alphabetic()) {
+            CaptureRule::Named(rule.into())
+        } else if rule.is_empty() {
+            CaptureRule::Implicit
+        } else if let Ok(num) = rule.parse() {
+            CaptureRule::Positional(num)
+        } else {
+            return Err(format!("Invalid rule: '{}'", rule));
+        };
+        self.pos += end_of_rule;
+
+        // Ensure we're at the end of the capture.
+        let source = self.remainder();
+        if source.starts_with('}') {
+            self.pos += 1;
+            self.output.push(Segment::Capture(Capture {
+                pos,
+                rule,
+            }));
+            return Ok(());
+        } else {
+            return Err(format!("Unexpected character '{}' in format string", source.chars().next().unwrap()));
         }
     }
-
-    Parser::new(&input.value()).parse()
 }
