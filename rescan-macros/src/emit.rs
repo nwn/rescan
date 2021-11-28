@@ -1,5 +1,5 @@
 use proc_macro::TokenStream;
-use proc_macro2::{TokenStream as TokenStream2};
+use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote, ToTokens};
 
 use crate::{Abstract, Rule, Segment};
@@ -60,7 +60,7 @@ impl ToTokens for Abstract {
                             val
                         };
                     });
-                    captures.push((*pos, quote!(#cap_ident,), quote!(#typ,)));
+                    captures.push((*pos, quote!(#cap_ident), quote!(#typ)));
                 }
             }
         }
@@ -73,8 +73,8 @@ impl ToTokens for Abstract {
         let regex_array = join(&regex_array);
         let literals = join(&literals);
         let matches = join(&matches);
-        let captures = join(&captures);
-        let types = join(&types);
+        let captures = join_with(&captures, quote!(,));
+        let types = join_with(&types, quote!(,));
 
         let output = quote! {
             {
@@ -98,8 +98,22 @@ impl ToTokens for Abstract {
     }
 }
 
+/// Join a slice of [`TokenStream`] into a single TokenStream.
+///
+/// [`TokenStream`]: proc_macro2::TokenStream
 fn join(token_streams: &[TokenStream2]) -> TokenStream2 {
     token_streams
         .iter()
         .fold(quote!(), |prev, cur| quote!(#prev #cur))
+}
+
+/// Join a slice of [`TokenStream`] into a single TokenStream, with a separator.
+///
+/// [`TokenStream`]: proc_macro2::TokenStream
+fn join_with(token_streams: &[TokenStream2], sep: TokenStream2) -> TokenStream2 {
+    if let Some((first, rest)) = token_streams.split_first() {
+        rest.iter().fold(quote!(#first), |prev, cur| quote!(#prev #sep #cur))
+    } else {
+        quote!()
+    }
 }
