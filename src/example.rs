@@ -2,38 +2,37 @@
 
 use crate::internal::*;
 
-static REGEX_1: LazyRegex = LazyRegex::new(|| {
-    Regex::new(r"[[:alpha:]]+\s[[:alpha:]]+")
-});
-static REGEX_3: LazyRegex = LazyRegex::new(|| {
-    Regex::new(r"[[:digit:]]+\s[[:alpha:]]+")
-});
+fn build_regexes() -> Result<Vec<Regex>, RegexError> {
+    [
+        Regex::new(r"[[:alpha:]]+\s[[:alpha:]]+"),
+        Regex::new(r"[[:digit:]]+\s[[:alpha:]]+"),
+    ].into_iter().collect()
+}
 
-fn scanner(reader: &mut impl std::io::BufRead) -> Result<(String, String)> {
+fn scan(reader: &mut dyn std::io::BufRead, regexes: &[Regex]) -> Result<(String, String)> {
+    use crate::{Scan, DefaultScan, Error};
+
     let lit_0 = "One might expect ";
-    let lit_2 = " to have at least ";
-    let lit_4 = ".";
-
-    let regex_1 = REGEX_1.as_ref()?;
-    let regex_3 = REGEX_3.as_ref()?;
+    let lit_1 = " to have at least ";
+    let lit_2 = ".";
 
     match_literal(reader, lit_0)?;
     let cap_0 = {
-        let str = match_regex(reader, regex_1)?;
-        let val = <String as std::str::FromStr>::from_str(str).unwrap();
+        let str = match_regex(reader, &regexes[0])?;
+        let val = <String as Scan>::scan(str).map_err(Error::from_parse_error)?;
+        let str_len = str.len();
+        advance_from_regex(reader, str_len);
+        val
+    };
+    match_literal(reader, lit_1)?;
+    let cap_1 = {
+        let str = match_regex(reader, &regexes[1])?;
+        let val = <String as Scan>::scan(str).map_err(Error::from_parse_error)?;
         let str_len = str.len();
         advance_from_regex(reader, str_len);
         val
     };
     match_literal(reader, lit_2)?;
-    let cap_1 = {
-        let str = match_regex(reader, regex_3)?;
-        let val = <String as std::str::FromStr>::from_str(str).unwrap();
-        let str_len = str.len();
-        advance_from_regex(reader, str_len);
-        val
-    };
-    match_literal(reader, lit_4)?;
 
     Ok((cap_0, cap_1))
 }
@@ -42,7 +41,8 @@ fn scanner(reader: &mut impl std::io::BufRead) -> Result<(String, String)> {
 fn test_scanner() {
     let s = String::from("One might expect most people to have at least 4 fingers.");
 
-    let (sub, obj) = scanner(&mut s.as_bytes()).unwrap();
+    let scanner = crate::Scanner::new(build_regexes, scan);
+    let (sub, obj) = scanner.scan(&mut s.as_bytes()).unwrap();
 
     assert_eq!("most people", sub);
     assert_eq!("4 fingers", obj);
