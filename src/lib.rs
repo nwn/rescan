@@ -9,6 +9,7 @@ pub mod readers;
 pub use rescan_macros::scanner;
 pub use scanner::Scanner;
 pub use error::{ScanError, Error, Result};
+pub use impls::{Binary, Octal, Hex};
 use std::error::Error as StdError;
 
 /// Parse a value from a string.
