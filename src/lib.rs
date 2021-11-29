@@ -12,9 +12,10 @@ pub use error::{ScanError, Error, Result};
 use std::error::Error as StdError;
 
 /// Parse a value from a string.
-pub trait Scan: Sized {
+pub trait Scan {
+    type Output: Sized;
     type Error: StdError;
-    fn scan(text: &str) -> Result<Self, Self::Error>;
+    fn scan(text: &str) -> Result<Self::Output, Self::Error>;
 }
 /// Parse a value from a string with a default regular expression.
 pub trait DefaultScan: Scan {

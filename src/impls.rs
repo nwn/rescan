@@ -4,8 +4,9 @@ use std::str::FromStr;
 macro_rules! impl_scan_as_from_str {
     ($ty:ty) => {
         impl Scan for $ty {
+            type Output = Self;
             type Error = <Self as FromStr>::Err;
-            fn scan(s: &str) -> Result<Self, Self::Error> {
+            fn scan(s: &str) -> Result<Self::Output, Self::Error> {
                 <Self as FromStr>::from_str(s)
             }
         }

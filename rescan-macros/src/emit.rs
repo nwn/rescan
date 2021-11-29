@@ -60,7 +60,7 @@ impl ToTokens for Abstract {
                             val
                         };
                     });
-                    captures.push((*pos, quote!(#cap_ident), quote!(#typ)));
+                    captures.push((*pos, quote!(#cap_ident), quote!(<#typ as Scan>::Output)));
                 }
             }
         }
