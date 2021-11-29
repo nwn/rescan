@@ -3,7 +3,7 @@ use once_cell::unsync::Lazy;
 
 pub use regex::{Regex, Error as RegexError};
 pub use crate::Result;
-pub use crate::readers::LineIter;
+pub use crate::readers::{LineIter, ScanIter};
 
 /// The type returned by the [`scanner!`] macro.
 ///
@@ -48,5 +48,22 @@ impl<T> Scanner<T> {
     /// is scanned.
     pub fn scan_lines<'a>(&'a self, reader: &'a mut dyn BufRead) -> LineIter<'a, T> {
         LineIter::new(self, reader)
+    }
+
+    /// Returns an iterator that attempts to read values from lines of input.
+    ///
+    /// The iterator will repeatedly attempt to [`scan`](Self::scan) from `reader`.
+    /// The iterator terminates at the first unsuccessful scan.
+    pub fn scan_multiple<'a>(&'a self, reader: &'a mut dyn BufRead) -> ScanIter<'a, T> {
+        ScanIter::new(self, reader)
+    }
+
+    /// Returns an iterator that attempts to read values from lines of input.
+    ///
+    /// The iterator will repeatedly attempt to [`scan`](Self::scan) from `reader`,
+    /// expecting the literal `sep` to appear between each occurrence. The iterator
+    /// terminates at the first unsuccessful scan.
+    pub fn scan_multiple_with_separator<'a>(&'a self, reader: &'a mut dyn BufRead, sep: &'a str) -> ScanIter<'a, T> {
+        ScanIter::with_separator(self, reader, sep)
     }
 }
