@@ -1,14 +1,17 @@
-#[doc(hidden)]
-pub mod internal;
-mod error;
+mod internal;
+pub mod error;
 mod example;
 mod impls;
 mod scanner;
 pub mod readers;
+#[doc(hidden)]
+pub mod _rescan_internal {
+    pub use crate::internal::*;
+}
 
 pub use rescan_macros::scanner;
 pub use scanner::Scanner;
-pub use error::{ScanError, Error, Result};
+pub use error::{Error, Result};
 pub use impls::{Binary, Octal, Hex};
 use std::error::Error as StdError;
 

@@ -1,5 +1,5 @@
 use std::io::{BufRead, Result as IoResult};
-use crate::{Scanner, ScanError, Result};
+use crate::{Scanner, Result};
 
 /// Read values from a line of standard input.
 ///
@@ -34,7 +34,7 @@ macro_rules! scanln_from {
     ($r:expr, $($t:tt)+) => {{
         match $crate::readers::read_line($r) {
             Ok(line) => rescan::scanner!($($t)+).scan(&mut line.unwrap_or_default().as_slice()),
-            Err(err) => Err($crate::ScanError::from(err).into()),
+            Err(err) => Err($crate::error::ScanError::from(err).into()),
         }
     }}
 }
@@ -57,7 +57,7 @@ impl<'a, Output> Iterator for LineIter<'a, Output> {
     fn next(&mut self) -> Option<Self::Item> {
         match read_line(self.reader).transpose() {
             Some(Ok(line)) => Some(self.scanner.scan(&mut line.as_slice())),
-            Some(Err(err)) => Some(Err(ScanError::from(err).into())),
+            Some(Err(err)) => Some(Err(crate::error::ScanError::from(err).into())),
             None => None,
         }
     }

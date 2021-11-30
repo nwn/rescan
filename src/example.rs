@@ -1,6 +1,7 @@
 #![allow(unused)]
 
-use crate::internal::*;
+use crate::{Scan, DefaultScan, Scanner, Error, Result};
+use crate::_rescan_internal::*;
 
 fn build_regexes() -> Result<Vec<Regex>, RegexError> {
     [

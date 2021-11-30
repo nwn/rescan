@@ -78,8 +78,8 @@ impl ToTokens for Abstract {
 
         let output = quote! {
             {
-                use rescan::{Scan, DefaultScan, Scanner, Error};
-                use rescan::internal::*;
+                use rescan::{Scan, DefaultScan, Scanner, Error, Result};
+                use rescan::_rescan_internal::*;
 
                 fn build_regexes() -> Result<Vec<Regex>, RegexError> {
                     [#regex_array].into_iter().collect()

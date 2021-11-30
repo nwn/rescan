@@ -1,8 +1,8 @@
-use crate::error::ScanError::{self, *};
+use crate::error::{Result, ScanError::{self, *}, Utf8Error};
 use std::io::BufRead;
 
+// Re-export certain items from regex so they're in a known location.
 pub use regex::{Regex, Error as RegexError};
-pub use crate::Result;
 
 /// A dummy function with the same signature as that returned by a call to
 /// `scanner`.
@@ -64,10 +64,7 @@ pub fn advance_from_regex(reader: &mut dyn BufRead, match_len: usize) {
 fn try_read_str(reader: &mut dyn BufRead) -> Result<&str, ScanError> {
     let buf = reader.fill_buf()?;
     longest_utf8_prefix(buf).map_err(|error_bytes| {
-        let len = error_bytes.len();
-        let mut bytes = [0; 4];
-        bytes[..len].copy_from_slice(error_bytes);
-        ScanDecodeError { bytes, len }
+        Utf8Error::new(error_bytes).into()
     })
 }
 
