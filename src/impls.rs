@@ -91,10 +91,18 @@ impl_default_scan!(std::num::NonZeroI64, INT_REGEX);
 impl_default_scan!(std::num::NonZeroI128, INT_REGEX);
 impl_default_scan!(std::num::NonZeroIsize, INT_REGEX);
 
-/// Implements [`Scan`](crate::Scan) for integer types, interpreting input
-/// as binary.
+/// Implementation of [`Scan`](crate::Scan) and [`DefaultScan`](crate::DefaultScan)
+/// for `T`, interpreting input as binary.
 ///
-/// This type can be extended to support custom types.
+/// `Binary` can be extended to support custom types.
+///
+/// # Example
+/// ```
+/// # use rescan::{scanln_from, Binary, Error};
+/// let mut input = "01101010".as_bytes();
+/// assert_eq!(0b01101010_u8, scanln_from!(&mut input, "{}", Binary<u8>)?);
+/// # Ok::<(), Error>(())
+/// ```
 pub struct Binary<T> { _phantom: PhantomData<T> }
 impl<T> Binary<T> {
     const RADIX: u32 = 2;
@@ -102,10 +110,18 @@ impl<T> Binary<T> {
     const INT_REGEX: &'static str = r"[+-]?[01]+";
 }
 
-/// Implements [`Scan`](crate::Scan) for integer types, interpreting input
-/// as octal.
+/// Implementation of [`Scan`](crate::Scan) and [`DefaultScan`](crate::DefaultScan)
+/// for `T`, interpreting input as octal.
 ///
-/// This type can be extended to support custom types.
+/// `Octal` can be extended to support custom types.
+///
+/// # Example
+/// ```
+/// # use rescan::{scanln_from, Octal, Error};
+/// let mut input = "644".as_bytes();
+/// assert_eq!(0o644_i32, scanln_from!(&mut input, "{}", Octal<i32>)?);
+/// # Ok::<(), Error>(())
+/// ```
 pub struct Octal<T> { _phantom: PhantomData<T> }
 impl<T> Octal<T> {
     const RADIX: u32 = 8;
@@ -113,10 +129,18 @@ impl<T> Octal<T> {
     const INT_REGEX: &'static str = r"[+-]?[0-7]+";
 }
 
-/// Implements [`Scan`](crate::Scan) for integer types, interpreting input
-/// as hexadecimal.
+/// Implementation of [`Scan`](crate::Scan) and [`DefaultScan`](crate::DefaultScan)
+/// for `T`, interpreting input as hexadecimal.
 ///
-/// This type can be extended to support custom types.
+/// `Hex` can be extended to support custom types.
+///
+/// # Example
+/// ```
+/// # use rescan::{scanln_from, Hex, Error};
+/// let mut input = "1ba7".as_bytes();
+/// assert_eq!(0x1ba7_u16, scanln_from!(&mut input, "{}", Hex<u16>)?);
+/// # Ok::<(), Error>(())
+/// ```
 pub struct Hex<T> { _phantom: PhantomData<T> }
 impl<T> Hex<T> {
     const RADIX: u32 = 16;
