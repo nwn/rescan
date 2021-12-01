@@ -2,8 +2,10 @@ mod emit;
 mod parse;
 
 use proc_macro::TokenStream;
+use proc_macro_error::{proc_macro_error};
 
 #[proc_macro]
+#[proc_macro_error]
 pub fn scanner(input: TokenStream) -> TokenStream {
     emit::emit(parse::parse(input))
 }

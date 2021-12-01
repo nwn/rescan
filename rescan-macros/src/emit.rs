@@ -49,7 +49,7 @@ impl ToTokens for Abstract {
                         Rule::Custom { typ, .. } |
                         Rule::Default { typ } => typ.as_ref(),
                         // Parser ensures that only null captures can have null rules.
-                        Rule::Null { .. } => unreachable!(),
+                        Rule::Null { .. } => unreachable!("untyped capture"),
                     };
                     matches.push(quote! {
                         let #cap_ident = {

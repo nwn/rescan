@@ -1,12 +1,17 @@
-use syn;
+use syn::{self, spanned::Spanned as _};
 use proc_macro::TokenStream;
-use proc_macro2::{Span};
+use proc_macro_error::{emit_call_site_error, set_dummy, abort_if_dirty, abort_call_site, emit_error};
 use crate::{Abstract, Rule};
 
 pub(crate) fn parse(input: TokenStream) -> Abstract {
+    // Until we have parsed the desired return types of the macro call, in case
+    // of an error simply output a dummy expression with inferred types to
+    // suppress further errors.
+    set_dummy(quote::quote!(rescan::internal::dummy()));
+
     let abs = match syn::parse::<Concrete>(input) {
         Ok(abs) => abs,
-        Err(err) => panic!("{}", err),
+        Err(err) => abort_call_site!("{}", err),
     };
     Abstract::from(abs)
 }
@@ -15,7 +20,9 @@ impl From<Concrete> for Abstract {
     fn from(Concrete { segments, positional_rules, named_rules }: Concrete) -> Self {
         let mut pos_idx = 0;
         let mut rule_idx = 0;
-        let segments: Vec<_> = segments.into_iter().map(|seg| match seg {
+        let mut bad_positions = vec![];
+        let mut bad_names = vec![];
+        let segments: Vec<_> = segments.into_iter().filter_map(|seg| Some(match seg {
             Segment::Literal(lit) => Segment::Literal(lit),
             Segment::Capture(cap) => {
                 let pos = match cap.pos {
@@ -28,19 +35,20 @@ impl From<Concrete> for Abstract {
                 };
                 let rule = match cap.rule {
                     CaptureRule::Implicit => {
-                        // Ensure that implicit (positional) references are within range.
-                        let num_positions = positional_rules.len();
-                        if rule_idx >= num_positions {
-                            panic!("Too many positional arguments (references position {}, but there are only {})", rule_idx, num_positions);
-                        }
+                        // Ensure that implicit positional references are within range.
+                        let idx = rule_idx;
                         rule_idx += 1;
-                        rule_idx - 1
+                        let num_positions = positional_rules.len();
+                        if idx >= num_positions {
+                            bad_positions.push((idx,));
+                        }
+                        idx
                     }
                     CaptureRule::Positional(rule) => {
-                        // Ensure that positional references are within range.
+                        // Ensure that explicit positional references are within range.
                         let num_positions = positional_rules.len();
                         if rule >= num_positions {
-                            panic!("Invalid reference to positional argument {} (there are only {})", rule, num_positions);
+                            bad_positions.push((rule,));
                         }
                         rule
                     }
@@ -50,24 +58,67 @@ impl From<Concrete> for Abstract {
                             positional_rules.len() + idx
                         } else {
                             // Ensure that the referenced named argument exists.
-                            panic!("Argument named \"{}\" does not exist", name);
+                            bad_names.push((name,));
+                            return None; // TODO: Somehow keep this capture around for further error checking,
+                            // even though we don't have an obvious rule to pair it with.
                         }
                     }
                 };
                 Segment::Capture((pos, rule))
             }
-        }).collect();
+        })).collect();
 
-        // Ensure that outputs cover the range 0..n, where n is the number of outputs.
+        // Report any invalid references to positional rules.
+        if let Some((last, rest)) = bad_positions.split_last() {
+            let bad_refs = match rest {
+                [] => format!("argument {}", last.0),
+                [first] => format!("arguments {} and {}", first.0, last.0),
+                _ => {
+                    format!("arguments {}and {}", rest.iter().fold("".into(), |str, bad_ref| format!("{}{}, ", str, bad_ref.0)), last.0)
+                }
+            };
+            let args_provided = match positional_rules.len() {
+                1 => format!("only 1 argument was provided"),
+                n => format!("only {} arguments were provided", n),
+            };
+
+            let msg = format!("invalid reference to positional {} ({})", bad_refs, args_provided);
+            emit_call_site_error!(msg);
+        }
+
+        // Report any invalid references to named rules.
+        for (bad_name,) in bad_names {
+            let msg = format!("there is no argument named `{}`", bad_name);
+            emit_call_site_error!(msg);
+        }
+
+        // Ensure that outputs are unique.
         let mut outputs: Vec<_> = iter_captures(&segments)
             .filter_map(|(pos, _rule)| *pos)
             .collect();
-        outputs.sort_unstable();
-        outputs.dedup();
-        for (expected, actual) in outputs.into_iter().enumerate() {
-            if expected != actual {
-                panic!("Missing capture index: {}", expected);
+        outputs.sort(); // Stable so we can highlight the first occurrence among duplicates.
+        for (first, rest) in equal_ranges(&outputs).filter_map(<[_]>::split_first) {
+            for dup in rest {
+                emit_call_site_error!("duplicate reference to capture position {}", dup;
+                    note = "first defined here: {}", first);
             }
+        }
+
+        // Ensure that outputs cover the range 0..n, where n is the number of outputs.
+        let missing_outputs: Vec<_> = (0..outputs.len())
+            .filter(|pos| outputs.binary_search(&pos).is_err())
+            .collect();
+        if let Some((last, rest)) = missing_outputs.split_last() {
+            let missing_outputs = match rest {
+                [] => format!("capture {}", last),
+                [first] => format!("captures {} and {}", first, last),
+                _ => format!("captures {}and {}", rest.iter().fold("".into(), |str, missing| format!("{}{}, ", str, missing)), last),
+            };
+            let captures_specified = match outputs.len() {
+                1 => format!("there was 1 capture spec"),
+                n => format!("there were {} capture specs", n),
+            };
+            emit_call_site_error!("missing {} ({})", missing_outputs, captures_specified);
         }
 
         // Ensure that all named rules are unique.
@@ -75,40 +126,42 @@ impl From<Concrete> for Abstract {
             .iter()
             .map(|(name, _)| name)
             .collect();
-        names.sort();
-        for window in names.windows(2) {
-            if window[0] == window[1] {
-                panic!("Argument name {} occurs multiple times", window[1]);
+        names.sort(); // Stable so we can highlight the first occurrence among duplicates.
+        for (first, rest) in equal_ranges(&names).filter_map(<[_]>::split_first) {
+            for dup in rest {
+                emit_call_site_error!("duplicate argument name `{}`", dup;
+                    note = "first defined here: {}", first);
             }
         }
 
         let mut rules = positional_rules;
-        for (_name, rule) in named_rules {
-            rules.push(rule);
-        }
+        rules.extend(named_rules.into_iter().map(|(_name, rule)| rule));
 
         // Ensure that all rules are referenced.
         let mut rule_refs: Vec<_> = iter_captures(&segments)
             .map(|&(_pos, rule)| rule)
             .collect();
         rule_refs.sort_unstable();
-        rule_refs.dedup();
-        match mismatch(rule_refs.into_iter(), 0..rules.len()) {
-            Mismatch::None => (),
-            Mismatch::LeftOnly(_) => unreachable!("Rule references have already been checked"),
-            Mismatch::RightOnly(idx) |
-            Mismatch::Unequal(_, idx) => panic!("Unused argument: {}", idx),
+        for (idx, _rule) in rules.iter().enumerate() {
+            if rule_refs.binary_search(&idx).is_err() {
+                emit_call_site_error!("unused argument: {}", idx);
+            }
         }
 
         // Ensure that null rules are only referenced by null captures.
-        for (pos, rule) in iter_captures(&segments) {
+        for &(pos, rule) in iter_captures(&segments) {
             if pos.is_some() {
-                let rule = &rules[*rule];
+                let rule = &rules[rule];
                 if let Rule::Null { .. } = rule {
-                    panic!("Untyped arguments cannot be used in captures");
+                    emit_call_site_error!("untyped arguments cannot be used in captures";
+                        help = "try specifying an output type for the argument or using a non-capturing specifier");
                 }
             }
         }
+
+        // At this point, we should have caught all syntax errors.
+        // Stop here if any such errors have occurred.
+        abort_if_dirty();
 
         Self {
             segments,
@@ -117,30 +170,27 @@ impl From<Concrete> for Abstract {
     }
 }
 
-enum Mismatch<T, U> {
-    None,
-    LeftOnly(T),
-    RightOnly(U),
-    Unequal(T, U),
+// TODO: Replace this with [`group_by`] when it stabilizes:
+// https://doc.rust-lang.org/stable/std/primitive.slice.html#method.group_by
+// https://github.com/rust-lang/rust/issues/80552
+struct EqualRanges<'a, T> {
+    arr: &'a [T],
 }
-fn mismatch<T, U>(mut lhs: impl Iterator<Item = T>, mut rhs: impl Iterator<Item = U>) -> Mismatch<T, U>
-where T: PartialEq<U> {
-    loop {
-        let left = lhs.next();
-        let right = rhs.next();
-        break match (left, right) {
-            (Some(left), Some(right)) => {
-                if left == right {
-                    continue;
-                } else {
-                    Mismatch::Unequal(left, right)
-                }
-            }
-            (Some(left), None) => Mismatch::LeftOnly(left),
-            (None, Some(right)) => Mismatch::RightOnly(right),
-            (None, None) => Mismatch::None,
-        };
+impl<'a, T: PartialEq> Iterator for EqualRanges<'a, T> {
+    type Item = &'a [T];
+    fn next(&mut self) -> Option<Self::Item> {
+        let (first, rest) = self.arr.split_first()?;
+        let mut idx = 0;
+        while idx < rest.len() && first.eq(&rest[idx]) {
+            idx += 1;
+        }
+        let (range, rest) = self.arr.split_at(idx + 1);
+        self.arr = rest;
+        Some(range)
     }
+}
+fn equal_ranges<T: PartialEq>(arr: &[T]) -> EqualRanges<T> {
+    EqualRanges { arr }
 }
 
 fn iter_captures<Cap>(segments: &[Segment<Cap>]) -> impl Iterator<Item = &Cap> {
@@ -184,7 +234,7 @@ impl syn::parse::Parse for Concrete {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let format_string: syn::LitStr = input.parse()?;
         let segments = parse_format_string(format_string)
-            .map_err(|err| syn::Error::new(Span::call_site(), err))?;
+            .unwrap_or_else(|err| abort_call_site!("{}", err));
         let mut positional_rules = vec![];
         let mut named_rules = vec![];
         if !input.is_empty() {
@@ -195,7 +245,10 @@ impl syn::parse::Parse for Concrete {
                     named_rules.push((name.to_string(), rule));
                 } else {
                     if !named_rules.is_empty() {
-                        panic!("Positional arguments must be before named arguments")
+                        // TODO: This doesn't need to abort; it could just emit instead.
+                        // But as is, continuing after such an error could cause issues with captures
+                        // using incorrect positional arguments and yielding incorrect errors.
+                        abort_call_site!("positional arguments must be before named arguments");
                     }
                     positional_rules.push(rule);
                 }
@@ -242,8 +295,8 @@ impl syn::parse::Parse for Arg {
             as_token: _,
             ty: typ,
         } = input.parse()?;
-        if !attrs.is_empty() {
-            // TODO: Throw error
+        if let Some(first) = attrs.first() {
+            emit_error!(first.span(), "arguments cannot have attributes");
         }
 
         // Check for the null type (written `_`) that can only be used with null
@@ -357,8 +410,10 @@ impl<'s> FormatStringParser<'s> {
             return Ok(());
         } else if source.starts_with(':') {
             self.pos += 1;
+        } else if let Some(next) = source.chars().next() {
+            return Err(format!("Unexpected character '{}' in format string", next));
         } else {
-            return Err(format!("Unexpected character '{}' in format string", source.chars().next().unwrap()));
+            return Err(format!("Unexpected end of format string"));
         }
 
         // Extract the second field: a reference to the argument describing this capture's pattern and type.
@@ -391,8 +446,10 @@ impl<'s> FormatStringParser<'s> {
                 rule,
             }));
             return Ok(());
+        } else if let Some(next) = source.chars().next() {
+            return Err(format!("Unexpected character '{}' in format string", next));
         } else {
-            return Err(format!("Unexpected character '{}' in format string", source.chars().next().unwrap()));
+            return Err(format!("Unexpected end of format string"));
         }
     }
 }
