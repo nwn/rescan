@@ -18,7 +18,7 @@ cargo-doc:
   stage: build
   script:
     - rustc --version && cargo --version
-    - cargo doc --workspace --verbose
+    - cargo doc --workspace --document-private-items --verbose
 
 cargo-test:
   stage: test
