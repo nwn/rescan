@@ -1,6 +1,7 @@
 #![allow(unused)]
 
-use crate::internal::*;
+use crate::{Scan, DefaultScan, Scanner, Error, Result};
+use crate::_rescan_internal::*;
 
 fn build_regexes() -> Result<Vec<Regex>, RegexError> {
     [
@@ -41,7 +42,7 @@ fn scan(reader: &mut dyn std::io::BufRead, regexes: &[Regex]) -> Result<(String,
 fn test_scanner() {
     let s = String::from("One might expect most people to have at least 4 fingers.");
 
-    let scanner = Scanner::new(build_regexes, scan);
+    let scanner = crate::Scanner::new(build_regexes, scan);
     let (sub, obj) = scanner.scan(&mut s.as_bytes()).unwrap();
 
     assert_eq!("most people", sub);

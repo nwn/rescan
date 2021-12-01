@@ -1,4 +1,4 @@
-use syn::{self, spanned::Spanned};
+use syn::{self, spanned::Spanned as _};
 use proc_macro::TokenStream;
 use proc_macro_error::{emit_call_site_error, set_dummy, abort_if_dirty, abort_call_site, emit_error};
 use crate::{Abstract, Rule};

@@ -1,0 +1,37 @@
+image: rust:latest
+
+stages:
+  - build
+  - test
+
+variables:
+  RUSTFLAGS: "-Dwarnings"
+  RUSTDOCFLAGS: "-Dwarnings"
+
+cargo-build:
+  stage: build
+  script:
+    - rustc --version && cargo --version
+    - cargo build --workspace --verbose
+
+cargo-doc:
+  stage: build
+  script:
+    - rustc --version && cargo --version
+    - cargo doc --workspace --document-private-items --verbose
+
+cargo-test:
+  stage: test
+  needs: [cargo-build]
+  script:
+    - rustc --version && cargo --version
+    - cargo test --workspace --verbose
+
+cargo-clippy:
+  stage: test
+  needs: [cargo-build]
+  script:
+    - rustup --version
+    - rustup --verbose component add clippy
+    - rustc --version && cargo --version
+    - cargo clippy --workspace --verbose
